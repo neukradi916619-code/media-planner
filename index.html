@@ -189,7 +189,7 @@ body {
 /* ── GANTT STRUCTURE ── */
 .gantt-container {
   display: grid;
-  grid-template-columns: 220px 1fr;
+  grid-template-columns: 300px 1fr;
   min-width: 700px;
 }
 .gantt-header-row {
@@ -379,6 +379,92 @@ body {
 .flight-bar.status-cancelled {
   opacity: .3;
   filter: grayscale(.6);
+}
+
+/* ── INHERITED / OVERRIDE BADGES ── */
+.inherited-value {
+  color: var(--text-muted);
+  font-size: 11px;
+}
+.override-value {
+  color: var(--accent);
+  font-weight: 700;
+  font-size: 11px;
+}
+.value-inherit-hint {
+  font-size: 10px;
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+/* ── CONTEXT POPUP ── */
+.ctx-popup {
+  position: fixed;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-lg);
+  padding: 12px 14px;
+  z-index: 998;
+  max-width: 280px;
+  min-width: 180px;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity .15s;
+}
+.ctx-popup.visible { opacity: 1; }
+.ctx-popup-name {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin-bottom: 4px;
+  line-height: 1.3;
+}
+.ctx-popup-dates {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-bottom: 4px;
+}
+.ctx-popup-collection {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  margin-bottom: 4px;
+}
+.ctx-popup-dot {
+  width: 7px; height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.ctx-popup-comment {
+  font-size: 11px;
+  color: var(--text-secondary);
+  line-height: 1.4;
+  border-top: 1px solid var(--border-light);
+  margin-top: 6px;
+  padding-top: 6px;
+}
+
+/* ── ACTIVITY BAR LABEL ── */
+.activity-bar-label {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  padding: 0 5px;
+  font-size: 9px;
+  font-weight: 600;
+  color: inherit;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  pointer-events: none;
 }
 
 /* ── ACTIVITY ROWS ── */
@@ -784,6 +870,8 @@ body {
 
 <!-- TOOLTIP -->
 <div class="tooltip" id="tooltip"></div>
+<!-- CONTEXT POPUP -->
+<div class="ctx-popup" id="ctxPopup"></div>
 
 <script>
 'use strict';
@@ -985,6 +1073,8 @@ function applyFilters() {
   const dir    = document.getElementById('filterDirection').value;
 
   visibleFlights = allFlights.filter(f => {
+    // Hide cancelled flights unless user explicitly selected "отменено"
+    if (f.status === 'отменено' && status !== 'отменено') return false;
     if (status && f.status !== status) return false;
     if (col && f.collection !== col) return false;
     if (year || quarter) {
@@ -1053,8 +1143,8 @@ function renderGantt() {
   const container = document.getElementById('ganttContainer');
   container.innerHTML = '';
   container.style.display = 'grid';
-  container.style.gridTemplateColumns = `220px ${totalDays * DAY_PX}px`;
-  container.style.minWidth = `${220 + totalDays * DAY_PX}px`;
+  container.style.gridTemplateColumns = `300px ${totalDays * DAY_PX}px`;
+  container.style.minWidth = `${300 + totalDays * DAY_PX}px`;
 
   // Header row
   renderHeader(container);
@@ -1063,10 +1153,15 @@ function renderGantt() {
   renderContextRow(container);
 
   // Flight rows
+  const activeDir = document.getElementById('filterDirection').value;
   for (const flight of visibleFlights) {
     renderFlightRow(container, flight);
     if (expandedFlights.has(flight.name)) {
-      const acts = allActivities.filter(a => norm(a.flightName) === norm(flight.name));
+      let acts = allActivities.filter(a => norm(a.flightName) === norm(flight.name));
+      // When direction filter is active, show only matching activities in expanded view
+      if (activeDir) {
+        acts = acts.filter(a => norm(a.direction) === norm(activeDir));
+      }
       for (const act of acts) {
         renderActivityRow(container, act, flight);
       }
@@ -1193,9 +1288,7 @@ function renderContextRow(container) {
     bar.style.top = (6 + lane * 24) + 'px';
     bar.style.background = contextColor(ctx.type, ctx.color);
     bar.textContent = ctx.name;
-    bar.title = `${ctx.type}: ${ctx.name}\n${fmtDate(ctx.dateStart)} – ${fmtDate(ctx.dateEnd)}`;
-    if (ctx.comment) bar.title += `\n${ctx.comment}`;
-    addTooltip(bar, `<b>${ctx.type}</b>: ${ctx.name}<br>${fmtShort(ctx.dateStart)} – ${fmtShort(ctx.dateEnd)}${ctx.comment ? '<br>'+ctx.comment : ''}`);
+    addCtxPopup(bar, ctx);
     tc.appendChild(bar);
   }
 
@@ -1242,6 +1335,18 @@ function renderFlightRow(container, flight) {
   nameEl.textContent = flight.name;
   nameEl.style.cursor = 'pointer';
   nameEl.onclick = (e) => { e.stopPropagation(); openFlightDrawer(flight); };
+  // Show tooltip only when text is actually truncated
+  nameEl.addEventListener('mouseenter', (e) => {
+    if (nameEl.scrollWidth > nameEl.clientWidth) {
+      tooltip.innerHTML = `<b>${flight.name}</b>`;
+      tooltip.classList.add('visible');
+      moveTooltip(e);
+    }
+  });
+  nameEl.addEventListener('mousemove', (e) => {
+    if (tooltip.classList.contains('visible')) moveTooltip(e);
+  });
+  nameEl.addEventListener('mouseleave', () => tooltip.classList.remove('visible'));
   lc.appendChild(nameEl);
 
   if (hasActs) {
@@ -1310,12 +1415,23 @@ function renderActivityRow(container, act, flight) {
   tc.className = 'activity-timeline-cell';
   tc.style.width = `${totalDays * DAY_PX}px`;
 
+  const barW = barWidth(act.dateStart, act.dateEnd);
   const bar = document.createElement('div');
   bar.className = 'activity-bar';
   bar.style.left = barLeft(act.dateStart) + 'px';
-  bar.style.width = barWidth(act.dateStart, act.dateEnd) + 'px';
+  bar.style.width = barW + 'px';
   bar.style.background = hexToRgba(color, .18);
   bar.style.borderColor = color;
+  bar.style.color = color;
+  bar.style.position = 'absolute';
+  // Inline label if bar is wide enough
+  const labelText = act.block || act.format || '';
+  if (labelText && barW >= 50) {
+    const lbl = document.createElement('div');
+    lbl.className = 'activity-bar-label';
+    lbl.textContent = labelText;
+    bar.appendChild(lbl);
+  }
   addTooltip(bar, `<b>${act.direction}</b>${act.block ? ': '+act.block : ''}<br>${fmtShort(act.dateStart)} – ${fmtShort(act.dateEnd)}${act.platforms ? '<br>'+act.platforms : ''}${act.format ? '<br>'+act.format : ''}`);
   tc.appendChild(bar);
 
@@ -1376,6 +1492,17 @@ function openFlightDrawer(flight) {
       const dc = dirColor(a.direction);
       const card = document.createElement('div');
       card.className = 'activity-card';
+
+      // Helper: inherited = activity value matches flight value (both defined, equal)
+      // override = activity value differs from flight value
+      function inheritedOrOverride(actVal, flightVal, label, icon) {
+        if (!actVal) return '';
+        const isOverride = flightVal && norm(actVal) !== norm(flightVal);
+        const cls = isOverride ? 'override-value' : 'inherited-value';
+        const hint = isOverride ? '' : `<span class="value-inherit-hint"> (от флайта)</span>`;
+        return `<div class="activity-card-row">${icon} <span class="${cls}">${label}: ${actVal}</span>${hint}</div>`;
+      }
+
       card.innerHTML = `
         <div class="activity-card-header">
           <div style="display:flex;align-items:center;gap:6px">
@@ -1386,9 +1513,10 @@ function openFlightDrawer(flight) {
         </div>
         ${a.platforms?`<div class="activity-card-row">📱 ${a.platforms}</div>`:''}
         ${a.format?`<div class="activity-card-row">📄 ${a.format}</div>`:''}
-        ${a.taFinal?`<div class="activity-card-row">👤 ${a.taFinal}</div>`:''}
-        ${a.claimFinal?`<div class="activity-card-row">💬 ${a.claimFinal}</div>`:''}
-        ${a.skuFinal?`<div class="activity-card-row">📦 ${a.skuFinal}</div>`:''}
+        ${inheritedOrOverride(a.taFinal, flight.taFinal, 'ЦА', '👤')}
+        ${inheritedOrOverride(a.claimFinal, flight.claimFinal, 'Клейм', '💬')}
+        ${inheritedOrOverride(a.skuFinal, [flight.sku1,flight.sku2,flight.sku3].filter(Boolean).join(', '), 'SKU', '📦')}
+        ${a.comment?`<div class="activity-card-row" style="color:var(--text-muted);font-style:italic">💭 ${a.comment}</div>`:''}
       `;
       list.appendChild(card);
     });
@@ -1466,6 +1594,7 @@ function addTooltip(el, html) {
   el.addEventListener('mousemove', moveTooltip);
   el.addEventListener('mouseleave', () => tooltip.classList.remove('visible'));
 }
+
 function moveTooltip(e) {
   let x = e.clientX + 14;
   let y = e.clientY - 10;
@@ -1476,6 +1605,51 @@ function moveTooltip(e) {
   tooltip.style.left = x + 'px';
   tooltip.style.top = y + 'px';
 }
+
+// ── CONTEXT RICH POPUP ─────────────────────────────────────────────
+const ctxPopup = document.getElementById('ctxPopup');
+function addCtxPopup(el, ctx) {
+  el.addEventListener('mouseenter', (e) => {
+    const collectionColor = colorMap[ctx.collection] || contextColor(ctx.type, ctx.color);
+    let html = `<div class="ctx-popup-name">${ctx.name}</div>`;
+    html += `<div class="ctx-popup-dates">${fmtDate(ctx.dateStart)} – ${fmtDate(ctx.dateEnd)}</div>`;
+    if (ctx.type) {
+      html += `<div class="ctx-popup-collection"><span class="ctx-popup-dot" style="background:${contextColor(ctx.type, ctx.color)}"></span>${ctx.type}</div>`;
+    }
+    if (ctx.collection) {
+      html += `<div class="ctx-popup-collection"><span class="ctx-popup-dot" style="background:${collectionColor}"></span>${ctx.collection}</div>`;
+    }
+    if (ctx.comment) {
+      html += `<div class="ctx-popup-comment">${ctx.comment}</div>`;
+    }
+    ctxPopup.innerHTML = html;
+    ctxPopup.classList.add('visible');
+    moveCtxPopup(e);
+  });
+  el.addEventListener('mousemove', moveCtxPopup);
+  el.addEventListener('mouseleave', () => ctxPopup.classList.remove('visible'));
+  // Click to keep popup visible (toggle)
+  el.addEventListener('click', (e) => {
+    e.stopPropagation();
+    ctxPopup.style.pointerEvents = 'auto';
+    setTimeout(() => { ctxPopup.style.pointerEvents = 'none'; }, 3000);
+  });
+}
+function moveCtxPopup(e) {
+  let x = e.clientX + 14;
+  let y = e.clientY - 10;
+  const pw = ctxPopup.offsetWidth || 200;
+  const ph = ctxPopup.offsetHeight || 100;
+  if (x + pw > window.innerWidth - 8) x = e.clientX - pw - 14;
+  if (y + ph > window.innerHeight - 8) y = e.clientY - ph - 10;
+  ctxPopup.style.left = x + 'px';
+  ctxPopup.style.top = y + 'px';
+}
+// Close ctx popup on outside click
+document.addEventListener('click', () => {
+  ctxPopup.classList.remove('visible');
+  ctxPopup.style.pointerEvents = 'none';
+});
 
 // ── COLORS ─────────────────────────────────────────────────────────
 function shadeColor(hex, pct) {
