@@ -276,6 +276,7 @@ body {
 .context-bar {
   position: absolute;
   height: 20px;
+  min-width: 8px;
   top: 6px;
   border-radius: 4px;
   display: flex;
@@ -578,33 +579,43 @@ body {
   font-size: 13px;
 }
 
-/* ── SIDE DRAWER ── */
+/* ── MODAL ── */
 .drawer-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(0,0,0,.3);
+  background: rgba(0,0,0,.45);
   z-index: 500;
   opacity: 0;
   pointer-events: none;
   transition: opacity .2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 .drawer-overlay.open { opacity: 1; pointer-events: all; }
 .drawer {
   position: fixed;
-  right: 0;
-  top: 0;
-  bottom: 0;
-  width: 420px;
-  max-width: 90vw;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%,-50%) scale(.96);
+  width: 520px;
+  max-width: calc(100vw - 32px);
+  max-height: 88vh;
   background: var(--surface);
   box-shadow: var(--shadow-lg);
+  border-radius: var(--radius-lg);
   z-index: 501;
   display: flex;
   flex-direction: column;
-  transform: translateX(100%);
-  transition: transform .25s cubic-bezier(.4,0,.2,1);
+  opacity: 0;
+  transition: opacity .2s, transform .2s cubic-bezier(.4,0,.2,1);
+  pointer-events: none;
 }
-.drawer.open { transform: translateX(0); }
+.drawer.open {
+  opacity: 1;
+  transform: translate(-50%,-50%) scale(1);
+  pointer-events: all;
+}
 .drawer-header {
   padding: 20px 20px 16px;
   border-bottom: 1px solid var(--border);
@@ -717,6 +728,24 @@ body {
   white-space: nowrap;
 }
 .sku-list { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 2px; }
+.override-value { color: var(--text-primary); font-weight: 600; }
+.inherited-value { color: var(--text-muted); font-size: 10px; }
+.value-inherit-hint { display: none; }
+.sku-expand-btn {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 6px;
+  background: var(--accent-light);
+  color: var(--accent);
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 600;
+  cursor: pointer;
+  border: none;
+  white-space: nowrap;
+  transition: background .12s;
+}
+.sku-expand-btn:hover { background: var(--border); }
 
 /* ── TOOLTIP ── */
 .tooltip {
@@ -980,6 +1009,7 @@ function parseFlights(rows) {
     brief:         (r[23]||'').trim(),
     materialsUrl:  (r[24]||'').trim(),
     comment:       (r[25]||'').trim(),
+    specDocUrl:    (r[26]||'').trim(),
   })).filter(f => f.name && f.dateStart && f.dateEnd);
 }
 
@@ -1493,16 +1523,29 @@ function openFlightDrawer(flight) {
       const card = document.createElement('div');
       card.className = 'activity-card';
 
-      // Helper: inherited = activity value matches flight value (both defined, equal)
-      // override = activity value differs from flight value
-      function inheritedOrOverride(actVal, flightVal, label, icon) {
+      // Show only overridden values; suppress inherited (matching flight-level)
+      function overrideOnly(actVal, flightVal, label, icon) {
         if (!actVal) return '';
-        const isOverride = flightVal && norm(actVal) !== norm(flightVal);
-        const cls = isOverride ? 'override-value' : 'inherited-value';
-        const hint = isOverride ? '' : `<span class="value-inherit-hint"> (от флайта)</span>`;
-        return `<div class="activity-card-row">${icon} <span class="${cls}">${label}: ${actVal}</span>${hint}</div>`;
+        if (flightVal && norm(actVal) === norm(flightVal)) return ''; // inherited — skip
+        return `<div class="activity-card-row"><span class="override-value">${icon} ${label}: ${actVal}</span></div>`;
       }
 
+      // SKU collapse: show tags, collapse if > SKU_LIMIT
+      function skuRowHtml(skuStr, flightSkuStr) {
+        if (!skuStr) return '';
+        if (flightSkuStr && norm(skuStr) === norm(flightSkuStr)) return ''; // inherited — skip
+        const skus = skuStr.split(',').map(s => s.trim()).filter(Boolean);
+        const SKU_LIMIT = 3;
+        if (skus.length <= SKU_LIMIT) {
+          return `<div class="activity-card-row">📦 ${skus.map(s=>`<span class="tag">${s}</span>`).join(' ')}</div>`;
+        }
+        const visible = skus.slice(0, SKU_LIMIT);
+        const hidden = skus.slice(SKU_LIMIT);
+        const uid = 'sku_' + Math.random().toString(36).slice(2,8);
+        return `<div class="activity-card-row" id="${uid}_wrap">📦 ${visible.map(s=>`<span class="tag">${s}</span>`).join(' ')} <span id="${uid}_hidden" style="display:none">${hidden.map(s=>`<span class="tag">${s}</span>`).join(' ')}</span> <button class="sku-expand-btn" id="${uid}_btn" onclick="(function(){var h=document.getElementById('${uid}_hidden'),b=document.getElementById('${uid}_btn');if(h.style.display==='none'){h.style.display='';b.textContent='скрыть';}else{h.style.display='none';b.textContent='+${hidden.length} SKU';}})()">+${hidden.length} SKU</button></div>`;
+      }
+
+      const flightSkuStr = [flight.sku1,flight.sku2,flight.sku3].filter(Boolean).join(', ');
       card.innerHTML = `
         <div class="activity-card-header">
           <div style="display:flex;align-items:center;gap:6px">
@@ -1513,9 +1556,9 @@ function openFlightDrawer(flight) {
         </div>
         ${a.platforms?`<div class="activity-card-row">📱 ${a.platforms}</div>`:''}
         ${a.format?`<div class="activity-card-row">📄 ${a.format}</div>`:''}
-        ${inheritedOrOverride(a.taFinal, flight.taFinal, 'ЦА', '👤')}
-        ${inheritedOrOverride(a.claimFinal, flight.claimFinal, 'Клейм', '💬')}
-        ${inheritedOrOverride(a.skuFinal, [flight.sku1,flight.sku2,flight.sku3].filter(Boolean).join(', '), 'SKU', '📦')}
+        ${overrideOnly(a.taFinal, flight.taFinal, 'ЦА', '👤')}
+        ${overrideOnly(a.claimFinal, flight.claimFinal, 'Клейм', '💬')}
+        ${skuRowHtml(a.skuFinal, flightSkuStr)}
         ${a.comment?`<div class="activity-card-row" style="color:var(--text-muted);font-style:italic">💭 ${a.comment}</div>`:''}
       `;
       list.appendChild(card);
@@ -1533,15 +1576,26 @@ function openFlightDrawer(flight) {
     secB.appendChild(p);
     body.appendChild(secB);
   }
-  if (flight.materialsUrl) {
-    const secM = mkSection('Материалы');
-    const a = document.createElement('a');
-    a.href = flight.materialsUrl;
-    a.target = '_blank';
-    a.className = 'btn';
-    a.textContent = 'Открыть материалы →';
-    a.style.display = 'inline-flex';
-    secM.appendChild(a);
+  if (flight.materialsUrl || flight.specDocUrl) {
+    const secM = mkSection('Документы');
+    if (flight.materialsUrl) {
+      const a = document.createElement('a');
+      a.href = flight.materialsUrl;
+      a.target = '_blank';
+      a.className = 'btn';
+      a.textContent = 'Материалы / результаты →';
+      a.style.cssText = 'display:inline-flex;margin-bottom:6px';
+      secM.appendChild(a);
+    }
+    if (flight.specDocUrl) {
+      const a2 = document.createElement('a');
+      a2.href = flight.specDocUrl;
+      a2.target = '_blank';
+      a2.className = 'btn';
+      a2.textContent = 'Спец. документ →';
+      a2.style.cssText = 'display:inline-flex';
+      secM.appendChild(a2);
+    }
     body.appendChild(secM);
   }
   if (flight.comment) {
