@@ -3433,8 +3433,15 @@ function _buildPptx(data) {
   btn.textContent = 'Генерация…';
   btn.disabled = true;
 
-  pres.writeFile({ fileName: data.fileLabel + '.pptx' })
-    .then(() => {
+  pres.write({ outputType: 'blob' })
+    .then(blob => {
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = data.fileLabel + '.pptx';
+      document.body.appendChild(a);
+      a.click();
+      setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 1000);
       btn.textContent = '✓ Скачано';
       setTimeout(() => {
         btn.innerHTML = '<svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor"><path d="M8 12l-4-4h2.5V4h3v4H12L8 12zM2 14h12v1.5H2V14z"/></svg> Скачать PPTX';
