@@ -210,7 +210,8 @@ body {
   color: var(--text-muted);
   position: sticky;
   top: 0;
-  z-index: 30;
+  left: 0;
+  z-index: 40;
 }
 .timeline-header {
   background: var(--surface);
@@ -270,6 +271,9 @@ body {
   cursor: pointer;
   user-select: none;
   transition: background .12s;
+  position: sticky;
+  left: 0;
+  z-index: 20;
 }
 .ctx-header-label:hover { background: var(--surface3, #f1f3f5); }
 .ctx-toggle-arrow {
@@ -301,6 +305,9 @@ body {
   text-transform: uppercase;
   letter-spacing: .05em;
   min-height: 26px;
+  position: sticky;
+  left: 0;
+  z-index: 20;
 }
 .ctx-subrow-timeline {
   background: var(--surface2);
@@ -311,56 +318,87 @@ body {
 }
 .ctx-hidden { display: none !important; }
 
-/* Поводы — chips */
-.ctx-chip {
+/* Поводы — dots (replaced chips) */
+/* Single-day: marker dot + floating label */
+.ctx-povod-dot {
   position: absolute;
-  height: 16px;
-  border-radius: 8px;
-  display: flex;
-  align-items: center;
-  padding: 0 5px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #F59E0B;
+  border: 1.5px solid rgba(255,255,255,.7);
+  transform: translate(-50%, -50%);
+  cursor: pointer;
+  z-index: 5;
+  transition: transform .1s;
+}
+.ctx-povod-dot:hover { transform: translate(-50%,-50%) scale(1.4); z-index: 12; }
+.ctx-povod-label {
+  position: absolute;
   font-size: 9px;
   font-weight: 500;
   color: #92400e;
-  background: #fef3c7;
-  border: 1px solid #f59e0b;
   white-space: nowrap;
+  pointer-events: none;
+  z-index: 4;
+  line-height: 1.2;
+}
+/* Multi-day povod: thin bracket line */
+.ctx-povod-line {
+  position: absolute;
+  height: 2px;
+  background: #F59E0B;
+  border-radius: 1px;
   cursor: pointer;
-  z-index: 3;
-  transition: opacity .12s, filter .12s;
-  max-width: 120px;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  z-index: 4;
+  opacity: .75;
 }
-.ctx-chip.multiday {
-  border-radius: 4px;
-  background: #fffbeb;
-  border-color: #fcd34d;
+.ctx-povod-line::before, .ctx-povod-line::after {
+  content: '';
+  position: absolute;
+  top: -3px;
+  width: 2px;
+  height: 7px;
+  background: #F59E0B;
 }
-.ctx-chip:hover { opacity: 1; filter: brightness(.95); z-index: 12; }
+.ctx-povod-line::before { left: 0; }
+.ctx-povod-line::after  { right: 0; }
+.ctx-povod-line:hover { opacity: 1; z-index: 12; }
+/* Label on line */
+.ctx-povod-line-label {
+  position: absolute;
+  top: 5px;
+  left: 0;
+  font-size: 9px;
+  font-weight: 500;
+  color: #92400e;
+  white-space: nowrap;
+  pointer-events: none;
+}
 
-/* Сезонность — calm strips */
+/* Сезонность — lighter calm strips */
 .ctx-season-bar {
   position: absolute;
-  height: 18px;
-  border-radius: 3px;
+  height: 14px;
+  border-radius: 2px;
   display: flex;
   align-items: center;
-  padding: 0 6px;
-  font-size: 9px;
+  padding: 0 5px;
+  font-size: 8px;
   font-weight: 400;
-  color: #1e40af;
-  background: #dbeafe;
-  border: 1px solid #bfdbfe;
+  color: #3b82f6;
+  background: #eff6ff;
+  border: 1px solid #dbeafe;
   border-left: 2px solid #93c5fd;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
   cursor: pointer;
   z-index: 2;
+  opacity: .75;
   transition: opacity .12s;
 }
-.ctx-season-bar:hover { opacity: .85; z-index: 10; }
+.ctx-season-bar:hover { opacity: 1; z-index: 10; }
 
 /* События — purple */
 .ctx-event-bar {
@@ -483,7 +521,9 @@ body {
   gap: 8px;
   cursor: pointer;
   transition: background .12s;
-  position: relative;
+  position: sticky;
+  left: 0;
+  z-index: 20;
 }
 .flight-label-cell:hover { background: var(--surface2); }
 .flight-color-pill {
@@ -549,12 +589,26 @@ body {
   pointer-events: none;
   text-shadow: 0 1px 2px rgba(0,0,0,.18);
 }
-.flight-bar.status-done { opacity: .42; }
+.flight-bar.status-done { opacity: .58; }
 .flight-bar.status-confirmed { box-shadow: 0 2px 8px rgba(0,0,0,.2); }
 .flight-bar.status-cancelled {
-  opacity: .3;
-  filter: grayscale(.6);
+  opacity: .28;
+  filter: grayscale(.7);
 }
+/* Status dot inside flight bar */
+.flight-status-dot {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  margin-right: 5px;
+  border: 1px solid rgba(255,255,255,.45);
+}
+.flight-status-dot.dot-plan       { background: #9CA3AF; }
+.flight-status-dot.dot-confirmed  { background: #22C55E; }
+.flight-status-dot.dot-done       { background: #6B7280; }
+.flight-status-dot.dot-cancelled  { background: #EF4444; }
 
 /* ── INHERITED / OVERRIDE BADGES ── */
 .inherited-value {
@@ -652,6 +706,9 @@ body {
   display: flex;
   align-items: center;
   gap: 6px;
+  position: sticky;
+  left: 0;
+  z-index: 20;
 }
 .activity-dir-badge {
   font-size: 10px;
@@ -964,6 +1021,63 @@ body {
   border-radius: 2px;
 }
 .legend-sep { width: 1px; height: 14px; background: var(--border); }
+
+/* ── STATUS LEGEND POPOVER ── */
+.status-legend-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  background: var(--surface2);
+  color: var(--text-muted);
+  font-size: 11px;
+  cursor: pointer;
+  position: relative;
+  flex-shrink: 0;
+  transition: background .12s;
+  margin-left: 4px;
+}
+.status-legend-btn:hover { background: var(--surface); }
+.status-legend-popover {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: var(--shadow-md);
+  padding: 8px 12px;
+  z-index: 200;
+  display: none;
+  min-width: 160px;
+  flex-direction: column;
+  gap: 6px;
+}
+.status-legend-popover.open { display: flex; }
+.status-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+.status-legend-item .sli-dot {
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+/* ── STICKY COLUMN SHADOW ── */
+.flight-label-cell,
+.activity-label-cell,
+.ctx-header-label,
+.ctx-subrow-label,
+.label-header {
+  box-shadow: 2px 0 4px rgba(0,0,0,.05);
+}
 </style>
 </head>
 <body>
@@ -986,13 +1100,22 @@ body {
     <select class="filter-select" id="filterCollection" onchange="applyFilters()">
       <option value="">Все коллекции</option>
     </select>
-    <select class="filter-select" id="filterStatus" onchange="applyFilters()">
-      <option value="">Все статусы</option>
-      <option value="план">План</option>
-      <option value="подтверждено">Подтверждено</option>
-      <option value="завершено">Завершено</option>
-      <option value="отменено">Отменено</option>
-    </select>
+    <div style="display:inline-flex;align-items:center;gap:4px;position:relative;">
+      <select class="filter-select" id="filterStatus" onchange="applyFilters()">
+        <option value="">Все статусы</option>
+        <option value="план">План</option>
+        <option value="подтверждено">Подтверждено</option>
+        <option value="завершено">Завершено</option>
+        <option value="отменено">Отменено</option>
+      </select>
+      <button class="status-legend-btn" id="statusLegendBtn" title="Легенда статусов" onclick="toggleStatusLegend(event)">?</button>
+      <div class="status-legend-popover" id="statusLegendPopover">
+        <div class="status-legend-item"><span class="sli-dot" style="background:#9CA3AF"></span>План</div>
+        <div class="status-legend-item"><span class="sli-dot" style="background:#22C55E"></span>Подтверждено</div>
+        <div class="status-legend-item"><span class="sli-dot" style="background:#6B7280"></span>Завершено</div>
+        <div class="status-legend-item"><span class="sli-dot" style="background:#EF4444"></span>Отменено (скрыты)</div>
+      </div>
+    </div>
     <select class="filter-select" id="filterDirection" onchange="applyFilters()">
       <option value="">Все направления</option>
     </select>
@@ -1588,29 +1711,68 @@ function renderContextRow(container) {
   addTodayLine(tcP);
 
   const povodItems = allContext.filter(c => c.type.toLowerCase() === 'повод');
-  const povodAssigned = assignLanes(
-    povodItems,
-    c => ctxBarLeft(c.dateStart),
-    c => ctxBarLeft(c.dateStart) + 4 + ctxShortLabel(c.name, c.type).length * 6, // approx chip width
-    2
-  );
+  // Sort by date for predictable label stagger
+  povodItems.sort((a, b) => a.dateStart - b.dateStart);
 
-  let maxPovodLane = 0;
-  for (const { item: ctx, lane } of povodAssigned) {
-    maxPovodLane = Math.max(maxPovodLane, lane);
+  const DOT_Y = 14; // vertical center of single dot row
+  const LABEL_BASE_Y = DOT_Y + 5; // base label Y below dot
+
+  // Track label x-extents to stagger overlapping labels
+  const labelSlots = []; // { left, right, yOffset }
+
+  for (const ctx of povodItems) {
     const isMultiday = Math.round((ctx.dateEnd - ctx.dateStart) / 86400000) > 1;
-    const chip = document.createElement('div');
-    chip.className = 'ctx-chip' + (isMultiday ? ' multiday' : '');
-    chip.style.left = ctxBarLeft(ctx.dateStart) + 'px';
-    chip.style.top = (4 + lane * 22) + 'px';
+    const label = ctxShortLabel(ctx.name, ctx.type);
+
     if (isMultiday) {
-      chip.style.width = Math.max(8, ctxBarWidth(ctx.dateStart, ctx.dateEnd)) + 'px';
+      // Thin line with bracket caps
+      const line = document.createElement('div');
+      line.className = 'ctx-povod-line';
+      line.style.left = ctxBarLeft(ctx.dateStart) + 'px';
+      line.style.width = Math.max(4, ctxBarWidth(ctx.dateStart, ctx.dateEnd)) + 'px';
+      line.style.top = DOT_Y + 'px';
+      addCtxPopup(line, ctx);
+      tcP.appendChild(line);
+
+      const ll = document.createElement('div');
+      ll.className = 'ctx-povod-line-label';
+      ll.textContent = label;
+      ll.style.left = ctxBarLeft(ctx.dateStart) + 'px';
+      ll.style.top = (DOT_Y + 6) + 'px';
+      tcP.appendChild(ll);
+    } else {
+      // Single dot at exact date X
+      const xPx = ctxBarLeft(ctx.dateStart);
+      const dotEl = document.createElement('div');
+      dotEl.className = 'ctx-povod-dot';
+      dotEl.style.left = xPx + 'px';
+      dotEl.style.top = DOT_Y + 'px';
+      addCtxPopup(dotEl, ctx);
+      tcP.appendChild(dotEl);
+
+      // Label: stagger Y if overlapping
+      const approxW = label.length * 6;
+      const lLeft = xPx + 5;
+      const lRight = lLeft + approxW;
+      let yExtra = 0;
+      for (const slot of labelSlots) {
+        if (lLeft < slot.right + 2 && lRight > slot.left - 2) {
+          yExtra = Math.max(yExtra, slot.yOffset + 10);
+        }
+      }
+      labelSlots.push({ left: lLeft, right: lRight, yOffset: yExtra });
+
+      const lbl = document.createElement('div');
+      lbl.className = 'ctx-povod-label';
+      lbl.textContent = label;
+      lbl.style.left = (xPx + 5) + 'px';
+      lbl.style.top = (LABEL_BASE_Y + yExtra) + 'px';
+      tcP.appendChild(lbl);
     }
-    chip.textContent = ctxShortLabel(ctx.name, ctx.type);
-    addCtxPopup(chip, ctx);
-    tcP.appendChild(chip);
   }
-  const povodH = Math.max(26, (maxPovodLane + 1) * 22 + 8);
+
+  const maxLabelY = labelSlots.reduce((m, s) => Math.max(m, s.yOffset), 0);
+  const povodH = Math.max(32, LABEL_BASE_Y + maxLabelY + 14);
   lcP.style.minHeight = povodH + 'px';
   tcP.style.minHeight = povodH + 'px';
 
@@ -1718,6 +1880,23 @@ function statusClass(status) {
   return '';
 }
 
+function dotClass(status) {
+  if (status === 'подтверждено') return 'dot-confirmed';
+  if (status === 'завершено') return 'dot-done';
+  if (status === 'отменено') return 'dot-cancelled';
+  return 'dot-plan';
+}
+
+function toggleStatusLegend(e) {
+  e.stopPropagation();
+  const pop = document.getElementById('statusLegendPopover');
+  pop.classList.toggle('open');
+}
+document.addEventListener('click', () => {
+  const pop = document.getElementById('statusLegendPopover');
+  if (pop) pop.classList.remove('open');
+});
+
 function renderFlightRow(container, flight) {
   const color = flightColor(flight);
   const acts = allActivities.filter(a => norm(a.flightName) === norm(flight.name));
@@ -1782,6 +1961,11 @@ function renderFlightRow(container, flight) {
   bar.style.width = barWidth(flight.dateStart, flight.dateEnd) + 'px';
   bar.style.background = color;
   bar.style.borderColor = shadeColor(color, -20);
+
+  const dot = document.createElement('span');
+  dot.className = 'flight-status-dot ' + dotClass(flight.status);
+  addTooltip(dot, `Статус: ${STATUS_LABELS[flight.status]||flight.status}`);
+  bar.appendChild(dot);
 
   const bl = document.createElement('div');
   bl.className = 'flight-bar-label';
