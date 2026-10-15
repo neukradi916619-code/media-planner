@@ -1130,11 +1130,56 @@ body {
   white-space: nowrap;
   flex-shrink: 0;
 }
-#filterMonth {
-  display: none;
+/* ── PERIOD NAVIGATOR ── */
+.period-nav {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
 }
-#filterMonth.visible {
-  display: inline-block;
+.period-nav-arrow {
+  width: 26px;
+  height: 26px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface2);
+  color: var(--text-primary);
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: background .12s;
+  padding: 0;
+}
+.period-nav-arrow:hover { background: var(--border); }
+.period-pills {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  flex-wrap: nowrap;
+}
+.period-pill {
+  height: 26px;
+  padding: 0 9px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface2);
+  color: var(--text-secondary);
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all .12s;
+}
+.period-pill:hover { background: var(--border); color: var(--text-primary); }
+.period-pill.active {
+  background: var(--accent);
+  color: #fff;
+  border-color: var(--accent);
 }
 
 /* ── EXPORT MODAL ── */
@@ -1240,18 +1285,25 @@ body {
       <button class="scale-btn" id="scaleQuarter" onclick="setScale('quarter')">Квартал</button>
       <button class="scale-btn" id="scaleMonth" onclick="setScale('month')">Месяц</button>
     </div>
+    <!-- Period navigator — shown/hidden per scale -->
+    <div class="period-nav" id="periodNav" style="display:none">
+      <button class="period-nav-arrow" id="periodPrev" onclick="navigatePeriod(-1)" title="Предыдущий период">&#8249;</button>
+      <div class="period-pills" id="periodPills"></div>
+      <button class="period-nav-arrow" id="periodNext" onclick="navigatePeriod(1)" title="Следующий период">&#8250;</button>
+    </div>
     <div class="topbar-sep"></div>
+    <!-- Hidden inputs still used internally for year/quarter/month values -->
     <select class="filter-select" id="filterYear" onchange="applyFilters()">
       <option value="">Все годы</option>
     </select>
-    <select class="filter-select" id="filterQuarter" onchange="applyFilters()">
+    <select class="filter-select" id="filterQuarter" style="display:none">
       <option value="">Все кварталы</option>
-      <option value="1">Q1 (янв–март)</option>
-      <option value="2">Q2 (апр–июнь)</option>
-      <option value="3">Q3 (июль–сент)</option>
-      <option value="4">Q4 (окт–дек)</option>
+      <option value="1">Q1</option>
+      <option value="2">Q2</option>
+      <option value="3">Q3</option>
+      <option value="4">Q4</option>
     </select>
-    <select class="filter-select" id="filterMonth" onchange="applyFilters()">
+    <select class="filter-select" id="filterMonth" style="display:none">
       <option value="0">Январь</option>
       <option value="1">Февраль</option>
       <option value="2">Март</option>
@@ -1466,14 +1518,22 @@ const TODAY = new Date();
 TODAY.setHours(0,0,0,0);
 
 // ── SCALE CONFIG ────────────────────────────────────────────────────
-// DAY_PX is now dynamic based on scale
+// DAY_PX is dynamic — computed from container width / totalDays at render time
 const SCALE_CONFIG = {
-  year:    { dayPx: 4,  clusterDays: 14, minLabelLen: 8,  showLabelProb: 'sparse' },
-  quarter: { dayPx: 8,  clusterDays: 7,  minLabelLen: 6,  showLabelProb: 'normal' },
-  month:   { dayPx: 20, clusterDays: 2,  minLabelLen: 0,  showLabelProb: 'all'    },
+  year:    { clusterDays: 14, minLabelLen: 8,  showLabelProb: 'sparse' },
+  quarter: { clusterDays: 7,  minLabelLen: 6,  showLabelProb: 'normal' },
+  month:   { clusterDays: 2,  minLabelLen: 0,  showLabelProb: 'all'    },
 };
 let currentScale = 'year';
-let DAY_PX = SCALE_CONFIG.year.dayPx;
+let DAY_PX = 4; // will be recomputed dynamically
+
+const LEFT_COL_W = 300; // sticky left column width in px
+
+function computeAvailableTimelineWidth() {
+  const scroll = document.getElementById('ganttScroll');
+  if (!scroll) return 800;
+  return Math.max(300, scroll.clientWidth - LEFT_COL_W);
+}
 
 const STATUS_LABELS = {
   'план': 'План',
@@ -1674,11 +1734,7 @@ function computeViewRange() {
   const quarter = document.getElementById('filterQuarter').value;
   const month   = document.getElementById('filterMonth').value;
 
-  // Update DAY_PX from current scale
-  DAY_PX = SCALE_CONFIG[currentScale].dayPx;
-
   if (currentScale === 'month') {
-    // Use selected year or current year
     const y = year ? +year : TODAY.getFullYear();
     const m = (month !== '' && month !== null) ? +month : TODAY.getMonth();
     viewStart = new Date(y, m, 1);
@@ -1690,38 +1746,17 @@ function computeViewRange() {
     viewStart = new Date(y, qStart, 1);
     viewEnd   = new Date(y, qStart + 3, 0);
   } else {
-    // Year scale — use data range or selected year
-    const dates = [];
-    for (const f of visibleFlights) {
-      if (f.dateStart) dates.push(f.dateStart);
-      if (f.dateEnd) dates.push(f.dateEnd);
-    }
-    for (const c of allContext) {
-      if (c.dateStart) dates.push(c.dateStart);
-      if (c.dateEnd) dates.push(c.dateEnd);
-    }
-    if (!dates.length) {
-      const y = year ? +year : TODAY.getFullYear();
-      viewStart = new Date(y, 0, 1);
-      viewEnd   = new Date(y, 11, 31);
-    } else {
-      // When year filter is set, show that full year
-      if (year) {
-        viewStart = new Date(+year, 0, 1);
-        viewEnd   = new Date(+year, 11, 31);
-      } else {
-        viewStart = new Date(Math.min(...dates));
-        viewEnd   = new Date(Math.max(...dates));
-        viewStart = new Date(viewStart.getTime() - 14*86400000);
-        viewEnd   = new Date(viewEnd.getTime() + 14*86400000);
-        // snap to month boundaries
-        viewStart = new Date(viewStart.getFullYear(), viewStart.getMonth(), 1);
-        viewEnd   = new Date(viewEnd.getFullYear(), viewEnd.getMonth()+1, 0);
-      }
-    }
+    // Year scale
+    const y = year ? +year : TODAY.getFullYear();
+    viewStart = new Date(y, 0, 1);
+    viewEnd   = new Date(y, 11, 31);
   }
 
   totalDays = Math.round((viewEnd - viewStart) / 86400000) + 1;
+
+  // Dynamic DAY_PX: fill 100% of available timeline width
+  const availW = computeAvailableTimelineWidth();
+  DAY_PX = availW / totalDays;
 }
 
 function dayOffset(d) {
@@ -1734,56 +1769,137 @@ function barWidth(s, e) {
   return Math.max(w, 4);
 }
 
+// Clipped bar helpers — clip item dates to visible period boundaries
+function clippedBarLeft(itemStart) {
+  const clampedStart = itemStart < viewStart ? viewStart : itemStart;
+  return Math.max(0, dayOffset(clampedStart) * DAY_PX);
+}
+function clippedBarWidth(itemStart, itemEnd) {
+  if (!itemStart || !itemEnd) return 4;
+  const clampedStart = itemStart < viewStart ? viewStart : itemStart;
+  const clampedEnd   = itemEnd   > viewEnd   ? viewEnd   : itemEnd;
+  if (clampedStart > clampedEnd) return 0;
+  const w = (dayOffset(clampedEnd) - dayOffset(clampedStart) + 1) * DAY_PX;
+  return Math.max(w, 4);
+}
+
+// ── PERIOD NAVIGATOR UI ────────────────────────────────────────────
+function updatePeriodNav() {
+  const nav = document.getElementById('periodNav');
+  const pills = document.getElementById('periodPills');
+  const year = +(document.getElementById('filterYear').value) || TODAY.getFullYear();
+
+  if (currentScale === 'year') {
+    nav.style.display = 'none';
+    return;
+  }
+  nav.style.display = 'inline-flex';
+  pills.innerHTML = '';
+
+  if (currentScale === 'quarter') {
+    const curQ = +(document.getElementById('filterQuarter').value) || Math.floor(TODAY.getMonth() / 3) + 1;
+    ['I', 'II', 'III', 'IV'].forEach((label, i) => {
+      const q = i + 1;
+      const btn = document.createElement('button');
+      btn.className = 'period-pill' + (q === curQ ? ' active' : '');
+      btn.textContent = label;
+      btn.onclick = () => {
+        document.getElementById('filterQuarter').value = q;
+        applyFilters();
+      };
+      pills.appendChild(btn);
+    });
+  } else if (currentScale === 'month') {
+    const curM = +(document.getElementById('filterMonth').value);
+    const shortMonths = ['Янв','Фев','Мар','Апр','Май','Июн','Июл','Авг','Сен','Окт','Ноя','Дек'];
+    shortMonths.forEach((label, i) => {
+      const btn = document.createElement('button');
+      btn.className = 'period-pill' + (i === curM ? ' active' : '');
+      btn.textContent = label;
+      btn.onclick = () => {
+        document.getElementById('filterMonth').value = i;
+        applyFilters();
+      };
+      pills.appendChild(btn);
+    });
+  }
+}
+
+function navigatePeriod(dir) {
+  const fY = document.getElementById('filterYear');
+  const year = +(fY.value) || TODAY.getFullYear();
+
+  if (currentScale === 'quarter') {
+    let q = +(document.getElementById('filterQuarter').value) || Math.floor(TODAY.getMonth() / 3) + 1;
+    q += dir;
+    if (q < 1) {
+      q = 4;
+      const newY = year - 1;
+      const opt = [...fY.options].find(o => +o.value === newY);
+      if (opt) fY.value = newY;
+    } else if (q > 4) {
+      q = 1;
+      const newY = year + 1;
+      const opt = [...fY.options].find(o => +o.value === newY);
+      if (opt) fY.value = newY;
+    }
+    document.getElementById('filterQuarter').value = q;
+  } else if (currentScale === 'month') {
+    let m = +(document.getElementById('filterMonth').value);
+    m += dir;
+    if (m < 0) {
+      m = 11;
+      const newY = year - 1;
+      const opt = [...fY.options].find(o => +o.value === newY);
+      if (opt) fY.value = newY;
+    } else if (m > 11) {
+      m = 0;
+      const newY = year + 1;
+      const opt = [...fY.options].find(o => +o.value === newY);
+      if (opt) fY.value = newY;
+    }
+    document.getElementById('filterMonth').value = m;
+  } else {
+    // year nav
+    const newY = year + dir;
+    const opt = [...fY.options].find(o => +o.value === newY);
+    if (opt) fY.value = newY;
+  }
+  applyFilters();
+}
+
 // ── FILTERS ────────────────────────────────────────────────────────
 function applyFilters() {
-  // Update filter visibility based on current scale
-  const fQ = document.getElementById('filterQuarter');
-  const fM = document.getElementById('filterMonth');
-  if (currentScale === 'quarter') {
-    fQ.style.display = 'inline-block';
-    fM.style.display = 'none';
-  } else if (currentScale === 'month') {
-    fQ.style.display = 'none';
-    fM.style.display = 'inline-block';
-  } else {
-    // year scale — hide both
-    fQ.style.display = 'none';
-    fM.style.display = 'none';
-  }
+  // Compute view range first to get viewStart/viewEnd for period filtering
+  computeViewRange();
 
-  const year   = document.getElementById('filterYear').value;
-  // Quarter filter only applies in quarter scale to avoid restricting year view
-  const quarter = currentScale === 'quarter' ? document.getElementById('filterQuarter').value : '';
   const col    = document.getElementById('filterCollection').value;
   const status = document.getElementById('filterStatus').value;
   const dir    = document.getElementById('filterDirection').value;
 
+  // Filter flights: must intersect visible period AND match other filters
   visibleFlights = allFlights.filter(f => {
-    // Hide cancelled flights unless user explicitly selected "отменено"
+    if (!f.dateStart || !f.dateEnd) return false;
+    // Hide cancelled unless explicitly selected
     if (f.status === 'отменено' && status !== 'отменено') return false;
     if (status && f.status !== status) return false;
     if (col && f.collection !== col) return false;
-    if (year || quarter) {
-      const fy = f.dateStart?.getFullYear();
-      const ey = f.dateEnd?.getFullYear();
-      if (year && fy != year && ey != year) return false;
-      if (quarter) {
-        const q = +quarter;
-        const qMonths = [[0,1,2],[3,4,5],[6,7,8],[9,10,11]][q-1];
-        const sm = f.dateStart?.getMonth();
-        const em = f.dateEnd?.getMonth();
-        const inQ = qMonths.some(m => (sm<=m && m<=em));
-        if (!inQ) return false;
-      }
-    }
     if (dir) {
       const acts = allActivities.filter(a => norm(a.flightName) === norm(f.name));
       if (!acts.some(a => norm(a.direction) === norm(dir))) return false;
     }
+    // Period intersection: flight must overlap with visible range
+    if (f.dateStart > viewEnd || f.dateEnd < viewStart) return false;
     return true;
   });
 
-  computeViewRange();
+  // Recompute DAY_PX now (in case width changed)
+  const availW = computeAvailableTimelineWidth();
+  DAY_PX = availW / totalDays;
+
+  // Update period navigator UI
+  updatePeriodNav();
+
   renderGantt();
 }
 
@@ -1791,16 +1907,13 @@ function applyFilters() {
 function setScale(scale) {
   if (scale === currentScale) return;
 
-  // Save scroll position (center date) before changing scale
-  const ganttBody = document.getElementById('ganttScroll');
-  let savedCenterDate = null;
-  if (ganttBody && viewStart && DAY_PX > 0) {
-    const scrollLeft = ganttBody.scrollLeft;
-    const viewportW  = ganttBody.clientWidth;
-    const centerPx   = scrollLeft + viewportW / 2;
-    const centerDay  = Math.round(centerPx / DAY_PX);
-    savedCenterDate  = new Date(viewStart.getTime() + centerDay * 86400000);
+  // Remember current visible center date to navigate to smart period
+  let centerDate = null;
+  if (viewStart && viewEnd) {
+    const mid = new Date((viewStart.getTime() + viewEnd.getTime()) / 2);
+    centerDate = mid;
   }
+  if (!centerDate) centerDate = TODAY;
 
   currentScale = scale;
 
@@ -1810,34 +1923,28 @@ function setScale(scale) {
     if (btn) btn.classList.toggle('active', s === scale);
   });
 
-  // For month scale: pre-select month from savedCenterDate if not already set
-  if (scale === 'month' && savedCenterDate) {
-    const fM = document.getElementById('filterMonth');
-    // only auto-select if no explicit user choice yet (default 0 = January means unset state)
-    // always set to the month the user was looking at
-    fM.value = savedCenterDate.getMonth();
-    // Also update year filter to match
-    const fY = document.getElementById('filterYear');
-    if (!fY.value) {
-      // try to find and select the year
-      const yr = savedCenterDate.getFullYear();
-      const opt = [...fY.options].find(o => +o.value === yr);
-      if (opt) fY.value = yr;
-    }
+  const fY = document.getElementById('filterYear');
+  const fQ = document.getElementById('filterQuarter');
+  const fM = document.getElementById('filterMonth');
+
+  // Auto-navigate to the period containing centerDate
+  const yr = centerDate.getFullYear();
+  const mo = centerDate.getMonth();
+  const q  = Math.floor(mo / 3) + 1;
+
+  // Ensure year option exists
+  const yearOpt = [...fY.options].find(o => +o.value === yr);
+  if (yearOpt) fY.value = yr;
+
+  if (scale === 'quarter') {
+    fQ.value = q;
+  } else if (scale === 'month') {
+    fM.value = mo;
+    // sync year if needed
+    if (yearOpt) fY.value = yr;
   }
 
-  // Apply filters (this also updates visibility and re-renders)
   applyFilters();
-
-  // Restore scroll to same center date in new scale
-  if (savedCenterDate && ganttBody && viewStart) {
-    requestAnimationFrame(() => {
-      const newDAY_PX = SCALE_CONFIG[currentScale].dayPx;
-      const dayOffset = Math.round((savedCenterDate - viewStart) / 86400000);
-      const targetPx  = dayOffset * newDAY_PX - ganttBody.clientWidth / 2;
-      ganttBody.scrollLeft = Math.max(0, targetPx);
-    });
-  }
 }
 
 // ── POPULATE FILTERS ───────────────────────────────────────────────
@@ -1881,9 +1988,13 @@ function populateFilters() {
 function renderGantt() {
   const container = document.getElementById('ganttContainer');
   container.innerHTML = '';
+
+  // Timeline width fills 100% of available space
+  const timelineW = Math.round(totalDays * DAY_PX);
+
   container.style.display = 'grid';
-  container.style.gridTemplateColumns = `300px ${totalDays * DAY_PX}px`;
-  container.style.minWidth = `${300 + totalDays * DAY_PX}px`;
+  container.style.gridTemplateColumns = `${LEFT_COL_W}px ${timelineW}px`;
+  container.style.minWidth = `${LEFT_COL_W + timelineW}px`;
 
   // Header row
   renderHeader(container);
@@ -1926,56 +2037,86 @@ function renderHeader(container) {
   lh.textContent = 'Флайт / Активность';
   container.appendChild(lh);
 
+  const timelineW = Math.round(totalDays * DAY_PX);
+
   // Timeline header
   const th = document.createElement('div');
   th.className = 'timeline-header';
-  th.style.width = `${totalDays * DAY_PX}px`;
+  th.style.width = timelineW + 'px';
 
   const mr = document.createElement('div');
   mr.className = 'months-row';
-  mr.style.width = `${totalDays * DAY_PX}px`;
+  mr.style.width = timelineW + 'px';
   mr.style.position = 'relative';
 
-  // Generate months
-  let cur = new Date(viewStart);
-  while (cur <= viewEnd) {
-    const monthStart = new Date(cur.getFullYear(), cur.getMonth(), 1);
-    const monthEnd = new Date(cur.getFullYear(), cur.getMonth()+1, 0);
-    const clampedStart = cur > viewStart ? cur : viewStart;
-    const daysInView = Math.min(
-      Math.round((monthEnd - clampedStart)/86400000)+1,
-      totalDays - dayOffset(clampedStart)
-    );
-    const left = barLeft(clampedStart);
-
+  if (currentScale === 'month') {
+    // Month mode: show week tick marks (1, 8, 15, 22, 29) and a single month header
+    const monthName = viewStart.toLocaleDateString('ru-RU', { month:'long', year:'numeric' });
     const mc = document.createElement('div');
-    mc.className = 'month-cell';
-    if (cur.getMonth() === TODAY.getMonth() && cur.getFullYear() === TODAY.getFullYear()) {
-      mc.classList.add('today-month');
-    }
-    mc.style.position = 'absolute';
-    mc.style.left = left + 'px';
-    mc.style.width = (daysInView * DAY_PX) + 'px';
+    mc.className = 'month-cell today-month';
+    mc.style.cssText = `position:absolute;left:0;width:${timelineW}px;`;
 
     const ml = document.createElement('div');
     ml.className = 'month-label';
-    ml.textContent = cur.toLocaleDateString('ru-RU', { month:'short' }).replace('.','');
-
-    const my = document.createElement('div');
-    my.className = 'month-year';
-    my.textContent = cur.getFullYear();
-
+    ml.style.textTransform = 'capitalize';
+    ml.textContent = monthName;
     mc.appendChild(ml);
-    mc.appendChild(my);
     mr.appendChild(mc);
 
-    // advance to next month
-    cur = new Date(cur.getFullYear(), cur.getMonth()+1, 1);
+    // Week tick marks: every 7 days starting from day 1
+    const weekStarts = [1, 8, 15, 22, 29];
+    for (const dayNum of weekStarts) {
+      const tickDate = new Date(viewStart.getFullYear(), viewStart.getMonth(), dayNum);
+      if (tickDate > viewEnd) break;
+      const xPx = dayOffset(tickDate) * DAY_PX;
+      const tick = document.createElement('div');
+      tick.style.cssText = `position:absolute;bottom:0;left:${xPx}px;height:8px;width:1px;background:var(--border);`;
+      mr.appendChild(tick);
+
+      const tickLabel = document.createElement('div');
+      tickLabel.style.cssText = `position:absolute;bottom:9px;left:${xPx + 2}px;font-size:10px;color:var(--text-muted);white-space:nowrap;`;
+      tickLabel.textContent = dayNum;
+      mr.appendChild(tickLabel);
+    }
+  } else {
+    // Year / Quarter mode: show month cells
+    let cur = new Date(viewStart.getFullYear(), viewStart.getMonth(), 1);
+    while (cur <= viewEnd) {
+      const monthEnd = new Date(cur.getFullYear(), cur.getMonth()+1, 0);
+      const clampedStart = cur < viewStart ? viewStart : cur;
+      const clampedEnd   = monthEnd > viewEnd ? viewEnd : monthEnd;
+
+      const left  = dayOffset(clampedStart) * DAY_PX;
+      const width = (dayOffset(clampedEnd) - dayOffset(clampedStart) + 1) * DAY_PX;
+
+      const mc = document.createElement('div');
+      mc.className = 'month-cell';
+      if (cur.getMonth() === TODAY.getMonth() && cur.getFullYear() === TODAY.getFullYear()) {
+        mc.classList.add('today-month');
+      }
+      mc.style.cssText = `position:absolute;left:${left}px;width:${width}px;`;
+
+      const ml = document.createElement('div');
+      ml.className = 'month-label';
+      ml.textContent = cur.toLocaleDateString('ru-RU', { month:'short' }).replace('.','').toUpperCase();
+      mc.appendChild(ml);
+
+      if (currentScale === 'quarter') {
+        // Also show year in quarter mode
+        const my = document.createElement('div');
+        my.className = 'month-year';
+        my.textContent = cur.getFullYear();
+        mc.appendChild(my);
+      }
+
+      mr.appendChild(mc);
+      cur = new Date(cur.getFullYear(), cur.getMonth()+1, 1);
+    }
   }
 
   // Today line in header
   const todayOff = dayOffset(TODAY);
-  if (todayOff >= 0 && todayOff <= totalDays) {
+  if (todayOff >= 0 && todayOff < totalDays) {
     const tline = document.createElement('div');
     tline.style.cssText = `position:absolute;top:0;bottom:0;left:${todayOff*DAY_PX}px;width:2px;background:#EF4444;z-index:20;pointer-events:none;`;
     mr.appendChild(tline);
@@ -1988,8 +2129,8 @@ function renderHeader(container) {
 // ── CONTEXT BLOCK REDESIGN ────────────────────────────────────────
 
 // Helpers for placing elements on the timeline with lane-stacking
-function ctxBarLeft(d) { return barLeft(d); }
-function ctxBarWidth(ds, de) { return Math.max(8, barWidth(ds, de)); }
+function ctxBarLeft(d) { return clippedBarLeft(d); }
+function ctxBarWidth(ds, de) { return Math.max(8, clippedBarWidth(ds, de)); }
 
 function addTodayLine(tc) {
   const todayOff = dayOffset(TODAY);
@@ -2467,8 +2608,8 @@ function renderFlightRow(container, flight) {
 
   const bar = document.createElement('div');
   bar.className = 'flight-bar ' + statusClass(flight.status);
-  bar.style.left = barLeft(flight.dateStart) + 'px';
-  bar.style.width = barWidth(flight.dateStart, flight.dateEnd) + 'px';
+  bar.style.left = clippedBarLeft(flight.dateStart) + 'px';
+  bar.style.width = clippedBarWidth(flight.dateStart, flight.dateEnd) + 'px';
   bar.style.background = color;
   bar.style.borderColor = shadeColor(color, -20);
 
@@ -2513,10 +2654,10 @@ function renderActivityRow(container, act, flight) {
   tc.className = 'activity-timeline-cell';
   tc.style.width = `${totalDays * DAY_PX}px`;
 
-  const barW = barWidth(act.dateStart, act.dateEnd);
+  const barW = clippedBarWidth(act.dateStart, act.dateEnd);
   const bar = document.createElement('div');
   bar.className = 'activity-bar';
-  bar.style.left = barLeft(act.dateStart) + 'px';
+  bar.style.left = clippedBarLeft(act.dateStart) + 'px';
   bar.style.width = barW + 'px';
   bar.style.background = hexToRgba(color, .18);
   bar.style.borderColor = color;
@@ -2901,6 +3042,19 @@ async function initData() {
     setStatus(true, 'Данные загружены');
     populateFilters();
     applyFilters();
+
+    // ResizeObserver: recompute DAY_PX and re-render when container resizes
+    const ganttScroll = document.getElementById('ganttScroll');
+    if (ganttScroll && window.ResizeObserver) {
+      let _resizeTimer;
+      new ResizeObserver(() => {
+        clearTimeout(_resizeTimer);
+        _resizeTimer = setTimeout(() => {
+          computeViewRange();
+          renderGantt();
+        }, 80);
+      }).observe(ganttScroll);
+    }
 
     // Периодическое обновление каждые 5 минут
     setInterval(async () => {
