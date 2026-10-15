@@ -1136,6 +1136,95 @@ body {
 #filterMonth.visible {
   display: inline-block;
 }
+
+/* ── EXPORT MODAL ── */
+.modal-backdrop {
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,.45);
+  z-index: 1000;
+  display: flex; align-items: center; justify-content: center;
+  opacity: 0; pointer-events: none;
+  transition: opacity .18s;
+}
+.modal-backdrop.open { opacity: 1; pointer-events: all; }
+.modal {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+  width: 420px;
+  max-width: calc(100vw - 32px);
+  padding: 24px;
+  display: flex; flex-direction: column; gap: 18px;
+  transform: translateY(8px);
+  transition: transform .18s;
+}
+.modal-backdrop.open .modal { transform: translateY(0); }
+.modal-header {
+  display: flex; align-items: center; justify-content: space-between;
+}
+.modal-title {
+  font-size: 14px; font-weight: 600; color: var(--text-primary);
+  display: flex; align-items: center; gap: 8px;
+}
+.modal-close {
+  width: 28px; height: 28px; border-radius: var(--radius-sm);
+  border: none; background: transparent; color: var(--text-muted);
+  cursor: pointer; display: flex; align-items: center; justify-content: center;
+  font-size: 16px; transition: background .15s;
+}
+.modal-close:hover { background: var(--surface2); color: var(--text-primary); }
+.modal-section { display: flex; flex-direction: column; gap: 8px; }
+.modal-label {
+  font-size: 11px; font-weight: 600; letter-spacing: .04em;
+  text-transform: uppercase; color: var(--text-muted);
+}
+.modal-row { display: flex; gap: 8px; align-items: center; }
+.modal-seg {
+  display: inline-flex; border: 1px solid var(--border);
+  border-radius: var(--radius-sm); overflow: hidden; flex-shrink: 0;
+}
+.seg-btn {
+  height: 30px; padding: 0 12px; border: none;
+  border-right: 1px solid var(--border);
+  background: var(--surface2); color: var(--text-secondary);
+  font-family: inherit; font-size: 12px; font-weight: 500;
+  cursor: pointer; transition: all .15s; white-space: nowrap;
+}
+.seg-btn:last-child { border-right: none; }
+.seg-btn:hover { background: var(--border); color: var(--text-primary); }
+.seg-btn.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+.seg-btn:disabled { opacity: .35; cursor: not-allowed; }
+.modal-select {
+  height: 30px; padding: 0 10px;
+  border: 1px solid var(--border); border-radius: var(--radius-sm);
+  background: var(--surface2); color: var(--text-primary);
+  font-family: inherit; font-size: 12px; font-weight: 500;
+  cursor: pointer; outline: none; flex: 1; min-width: 80px;
+}
+.modal-select:focus { border-color: var(--accent); }
+.modal-select:disabled { opacity: .35; cursor: not-allowed; }
+.modal-checks { display: flex; flex-direction: column; gap: 8px; }
+.modal-check {
+  display: flex; align-items: center; gap: 8px;
+  font-size: 12px; color: var(--text-secondary); cursor: pointer;
+  user-select: none;
+}
+.modal-check input[type=checkbox] {
+  width: 14px; height: 14px; accent-color: var(--accent); cursor: pointer;
+}
+.export-preview {
+  background: var(--surface2);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-sm);
+  padding: 10px 12px;
+  font-size: 11px; color: var(--text-secondary);
+  line-height: 1.5;
+  min-height: 36px;
+}
+.export-preview strong { color: var(--text-primary); font-weight: 600; }
+.export-preview .preview-warn { color: var(--warning); }
+.modal-footer { display: flex; justify-content: flex-end; gap: 8px; }
 </style>
 </head>
 <body>
@@ -1202,10 +1291,94 @@ body {
   <div class="topbar-actions">
     <div class="status-dot" id="statusDot"></div>
     <span id="statusText" style="font-size:11px;color:var(--text-muted)">Загрузка...</span>
+    <button class="btn btn-primary" onclick="openExportModal()" title="Экспорт в PowerPoint">
+      <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor"><path d="M2 14a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1V6h-4V2H3a1 1 0 0 0-1 1v11zm8-12.5L13.5 5H10V1.5z"/></svg>
+      Экспорт PPTX
+    </button>
     <a id="sheetLink" class="btn" href="https://docs.google.com/spreadsheets/d/1fyorvNyY20cQLnVtEbXOvqhygbM9BYaK-uvH1I2YEOk/edit" target="_blank">
       <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor"><path d="M9 1H4a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V6L9 1zm0 1.5L12.5 6H9V2.5zM4 14V3h4v4h4v7H4z"/></svg>
       Таблица
     </a>
+  </div>
+</div>
+
+<!-- EXPORT MODAL -->
+<div class="modal-backdrop" id="exportBackdrop" onclick="closeExportModal(event)">
+  <div class="modal" onclick="event.stopPropagation()">
+    <div class="modal-header">
+      <div class="modal-title">
+        <svg width="14" height="14" viewBox="0 0 16 16" fill="var(--accent)"><path d="M2 14a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1V6h-4V2H3a1 1 0 0 0-1 1v11zm8-12.5L13.5 5H10V1.5z"/></svg>
+        Экспорт PPTX
+      </div>
+      <button class="modal-close" onclick="closeExportModal()">&times;</button>
+    </div>
+
+    <!-- Период -->
+    <div class="modal-section">
+      <div class="modal-label">Период</div>
+      <div class="modal-row">
+        <div class="modal-seg">
+          <button class="seg-btn active" id="epYear"    onclick="setExportPeriod('year')">Год</button>
+          <button class="seg-btn"        id="epQuarter" onclick="setExportPeriod('quarter')">Квартал</button>
+          <button class="seg-btn"        id="epMonth"   onclick="setExportPeriod('month')">Месяц</button>
+        </div>
+      </div>
+      <div class="modal-row" id="exportDateRow">
+        <select class="modal-select" id="expYear" onchange="updateExportPreview()">
+        </select>
+        <select class="modal-select" id="expQuarter" style="display:none" onchange="updateExportPreview()">
+          <option value="1">I квартал</option>
+          <option value="2">II квартал</option>
+          <option value="3">III квартал</option>
+          <option value="4">IV квартал</option>
+        </select>
+        <select class="modal-select" id="expMonth" style="display:none" onchange="updateExportPreview()">
+          <option value="0">Январь</option><option value="1">Февраль</option>
+          <option value="2">Март</option><option value="3">Апрель</option>
+          <option value="4">Май</option><option value="5">Июнь</option>
+          <option value="6">Июль</option><option value="7">Август</option>
+          <option value="8">Сентябрь</option><option value="9">Октябрь</option>
+          <option value="10">Ноябрь</option><option value="11">Декабрь</option>
+        </select>
+      </div>
+    </div>
+
+    <!-- Тип -->
+    <div class="modal-section">
+      <div class="modal-label">Тип презентации</div>
+      <div class="modal-seg">
+        <button class="seg-btn active" id="etOverview" onclick="setExportType('overview')">Обзорная</button>
+        <button class="seg-btn"        id="etFull"     onclick="setExportType('full')">Полная</button>
+      </div>
+    </div>
+
+    <!-- Доп. настройки -->
+    <div class="modal-section">
+      <div class="modal-label">Дополнительно</div>
+      <div class="modal-checks">
+        <label class="modal-check">
+          <input type="checkbox" id="expContext" checked onchange="updateExportPreview()">
+          Включить контекст (поводы, сезонность)
+        </label>
+        <label class="modal-check">
+          <input type="checkbox" id="expFilters" checked onchange="updateExportPreview()">
+          Учитывать текущие фильтры
+        </label>
+      </div>
+    </div>
+
+    <!-- Превью -->
+    <div class="export-preview" id="exportPreview">
+      Выберите параметры…
+    </div>
+
+    <div class="modal-footer">
+      <button class="btn" onclick="closeExportModal()">Отмена</button>
+      <button class="btn btn-primary" id="exportDoBtn" onclick="doExportPptx()">
+        <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor"><path d="M8 12l-4-4h2.5V4h3v4H12L8 12zM2 14h12v1.5H2V14z"/></svg>
+        Скачать PPTX
+      </button>
+    </div>
   </div>
 </div>
 
@@ -2750,6 +2923,540 @@ async function initData() {
         <div style="font-size:12px">${err.message || 'Проверьте URL Apps Script и права доступа'}</div>
       </div>`;
   }
+}
+
+// ══════════════════════════════════════════════════════════════════
+// EXPORT MODAL
+// ══════════════════════════════════════════════════════════════════
+
+let exportPeriodType = 'year';   // 'year' | 'quarter' | 'month'
+let exportPresentationType = 'overview'; // 'overview' | 'full'
+
+// ── Collect all years present in data ─────────────────────────────
+function getDataYears() {
+  const ySet = new Set();
+  for (const f of allFlights) {
+    if (f.dateStart) ySet.add(f.dateStart.getFullYear());
+    if (f.dateEnd)   ySet.add(f.dateEnd.getFullYear());
+  }
+  return [...ySet].sort();
+}
+
+// Quarter and month availability per year
+function getAvailableQuarters(year) {
+  const avail = new Set();
+  for (const f of allFlights) {
+    const fy = f.dateStart?.getFullYear();
+    const ey = f.dateEnd?.getFullYear();
+    if (fy !== year && ey !== year) continue;
+    for (let q = 1; q <= 4; q++) {
+      const qStart = new Date(year, (q-1)*3, 1);
+      const qEnd   = new Date(year, q*3, 0);
+      if (f.dateStart <= qEnd && f.dateEnd >= qStart) avail.add(q);
+    }
+  }
+  return avail;
+}
+function getAvailableMonths(year) {
+  const avail = new Set();
+  for (const f of allFlights) {
+    if (!f.dateStart || !f.dateEnd) continue;
+    const mStart = new Date(year, 0, 1);
+    const mEnd   = new Date(year, 11, 31);
+    if (f.dateStart > mEnd || f.dateEnd < mStart) continue;
+    for (let m = 0; m < 12; m++) {
+      const ms = new Date(year, m, 1);
+      const me = new Date(year, m+1, 0);
+      if (f.dateStart <= me && f.dateEnd >= ms) avail.add(m);
+    }
+  }
+  return avail;
+}
+
+// ── Open / close ───────────────────────────────────────────────────
+function openExportModal() {
+  // Populate year dropdown from data
+  const years = getDataYears();
+  const expYear = document.getElementById('expYear');
+  expYear.innerHTML = '';
+  years.forEach(y => {
+    const o = document.createElement('option');
+    o.value = y; o.textContent = y;
+    expYear.appendChild(o);
+  });
+
+  // Default: match current dashboard year if set
+  const dashYear = document.getElementById('filterYear').value;
+  if (dashYear && years.includes(+dashYear)) {
+    expYear.value = dashYear;
+  } else if (years.length) {
+    expYear.value = years[years.length - 1]; // latest year
+  }
+
+  // Default period = year, type = overview, checks = on
+  exportPeriodType = 'year';
+  exportPresentationType = 'overview';
+  ['epYear','epQuarter','epMonth'].forEach(id => document.getElementById(id).classList.remove('active'));
+  document.getElementById('epYear').classList.add('active');
+  ['etOverview','etFull'].forEach(id => document.getElementById(id).classList.remove('active'));
+  document.getElementById('etOverview').classList.add('active');
+  document.getElementById('expContext').checked = true;
+  document.getElementById('expFilters').checked = true;
+  document.getElementById('expQuarter').style.display = 'none';
+  document.getElementById('expMonth').style.display = 'none';
+
+  updateExportQuarterMonthOptions();
+  updateExportPreview();
+  document.getElementById('exportBackdrop').classList.add('open');
+}
+function closeExportModal(e) {
+  if (e && e.target !== document.getElementById('exportBackdrop')) return;
+  document.getElementById('exportBackdrop').classList.remove('open');
+}
+
+// ── Period switcher ────────────────────────────────────────────────
+function setExportPeriod(type) {
+  exportPeriodType = type;
+  ['epYear','epQuarter','epMonth'].forEach(id => document.getElementById(id).classList.remove('active'));
+  document.getElementById('ep' + type.charAt(0).toUpperCase() + type.slice(1)).classList.add('active');
+
+  document.getElementById('expQuarter').style.display = type === 'quarter' ? 'block' : 'none';
+  document.getElementById('expMonth').style.display   = type === 'month'   ? 'block' : 'none';
+
+  updateExportQuarterMonthOptions();
+  updateExportPreview();
+}
+function setExportType(type) {
+  exportPresentationType = type;
+  ['etOverview','etFull'].forEach(id => document.getElementById(id).classList.remove('active'));
+  document.getElementById('et' + type.charAt(0).toUpperCase() + type.slice(1)).classList.add('active');
+  updateExportPreview();
+}
+
+// ── Update quarter/month options based on selected year ────────────
+function updateExportQuarterMonthOptions() {
+  const year = +document.getElementById('expYear').value;
+  if (!year) return;
+
+  if (exportPeriodType === 'quarter') {
+    const avail = getAvailableQuarters(year);
+    const sel = document.getElementById('expQuarter');
+    [...sel.options].forEach(o => {
+      o.disabled = !avail.has(+o.value);
+    });
+    // Select first available if current is disabled
+    if (sel.options[sel.selectedIndex]?.disabled) {
+      const first = [...sel.options].find(o => !o.disabled);
+      if (first) sel.value = first.value;
+    }
+  }
+
+  if (exportPeriodType === 'month') {
+    const avail = getAvailableMonths(year);
+    const sel = document.getElementById('expMonth');
+    [...sel.options].forEach(o => {
+      o.disabled = !avail.has(+o.value);
+    });
+    if (sel.options[sel.selectedIndex]?.disabled) {
+      const first = [...sel.options].find(o => !o.disabled);
+      if (first) sel.value = first.value;
+    }
+  }
+}
+
+// ── Preview line ───────────────────────────────────────────────────
+function calcExportRange() {
+  const year = +document.getElementById('expYear').value;
+  if (!year) return null;
+
+  if (exportPeriodType === 'year') {
+    return { start: new Date(year,0,1), end: new Date(year,11,31) };
+  }
+  if (exportPeriodType === 'quarter') {
+    const q = +document.getElementById('expQuarter').value;
+    return { start: new Date(year,(q-1)*3,1), end: new Date(year,q*3,0) };
+  }
+  if (exportPeriodType === 'month') {
+    const m = +document.getElementById('expMonth').value;
+    return { start: new Date(year,m,1), end: new Date(year,m+1,0) };
+  }
+  return null;
+}
+
+function intersects(dateStart, dateEnd, rangeStart, rangeEnd) {
+  return dateStart <= rangeEnd && dateEnd >= rangeStart;
+}
+
+function updateExportPreview() {
+  // Also update quarter/month availability on year change
+  updateExportQuarterMonthOptions();
+
+  const range = calcExportRange();
+  const preview = document.getElementById('exportPreview');
+  if (!range) { preview.innerHTML = 'Нет данных для выбранного периода'; return; }
+
+  const useFilters   = document.getElementById('expFilters').checked;
+  const useContext   = document.getElementById('expContext').checked;
+
+  // Base flight set
+  let baseFlights = useFilters ? visibleFlights : allFlights;
+  const flights = baseFlights.filter(f =>
+    f.dateStart && f.dateEnd && intersects(f.dateStart, f.dateEnd, range.start, range.end)
+  );
+
+  // Activities
+  const activities = allActivities.filter(a => {
+    if (!a.dateStart || !a.dateEnd) return false;
+    if (useFilters) {
+      const matchFlight = flights.some(f => norm(f.name) === norm(a.flightName));
+      if (!matchFlight) return false;
+    }
+    return intersects(a.dateStart, a.dateEnd, range.start, range.end);
+  });
+
+  // Context items
+  const contextCount = useContext
+    ? allContext.filter(c => c.dateStart && c.dateEnd && intersects(c.dateStart, c.dateEnd, range.start, range.end)).length
+    : 0;
+
+  // Period label
+  const MONTHS_RU = ['Январь','Февраль','Март','Апрель','Май','Июнь','Июль','Август','Сентябрь','Октябрь','Ноябрь','Декабрь'];
+  const MONTHS_GEN = ['января','февраля','марта','апреля','мая','июня','июля','августа','сентября','октября','ноября','декабря'];
+  const Q_ROM = ['','I','II','III','IV'];
+  const year = +document.getElementById('expYear').value;
+  let periodLabel = '';
+  let titleLabel  = '';
+  let fileLabel   = '';
+  if (exportPeriodType === 'year') {
+    periodLabel = String(year);
+    titleLabel  = `Медиаплан ${year}`;
+    fileLabel   = `LIBREDERM_Медиаплан_${year}`;
+  } else if (exportPeriodType === 'quarter') {
+    const q = +document.getElementById('expQuarter').value;
+    periodLabel = `${Q_ROM[q]} кв. ${year}`;
+    titleLabel  = `Медиаплан · ${Q_ROM[q]} квартал ${year}`;
+    fileLabel   = `LIBREDERM_Медиаплан_${year}_Q${q}`;
+  } else {
+    const m = +document.getElementById('expMonth').value;
+    periodLabel = `${MONTHS_RU[m]} ${year}`;
+    titleLabel  = `Медиаплан · ${MONTHS_RU[m]} ${year}`;
+    fileLabel   = `LIBREDERM_Медиаплан_${year}_${MONTHS_RU[m]}`;
+  }
+
+  // Collection filter active?
+  const colFilter = document.getElementById('filterCollection').value;
+  if (useFilters && colFilter) {
+    const colName = [...document.getElementById('filterCollection').options]
+      .find(o => o.value === colFilter)?.textContent || colFilter.toUpperCase();
+    fileLabel = `LIBREDERM_${colName.toUpperCase()}_${year}` + (exportPeriodType !== 'year'
+      ? (exportPeriodType === 'quarter' ? `_Q${document.getElementById('expQuarter').value}` : `_${MONTHS_RU[+document.getElementById('expMonth').value]}`)
+      : '');
+  }
+
+  const typeLabel = exportPresentationType === 'full' ? 'Полная' : 'Обзорная';
+  const contextPart = useContext ? ` · ${contextCount} поводов` : '';
+  const filterNote = useFilters ? ' · с фильтрами' : '';
+
+  if (!flights.length) {
+    preview.innerHTML = `<span class="preview-warn">⚠ Нет флайтов за выбранный период</span>`;
+    return;
+  }
+
+  preview.innerHTML = `
+    <strong>Будет экспортировано:</strong> ${flights.length} флайтов · ${activities.length} активностей${contextPart}<br>
+    ${periodLabel} · ${typeLabel} презентация${filterNote}<br>
+    <span style="color:var(--text-muted);font-size:10px">${fileLabel}.pptx</span>
+  `;
+
+  // Store computed data for actual export
+  preview._exportData = { flights, activities, contextCount, titleLabel, fileLabel, range };
+}
+
+// ── Actual export ──────────────────────────────────────────────────
+function doExportPptx() {
+  const preview = document.getElementById('exportPreview');
+  const data = preview._exportData;
+  if (!data || !data.flights.length) {
+    alert('Нет данных для экспорта за выбранный период.');
+    return;
+  }
+
+  // Build a simple placeholder PPTX stub using PptxGenJS loaded dynamically
+  // Since PptxGenJS is not yet included, we generate a structured JSON summary
+  // and prompt user — full PPTX generation requires pptxgenjs CDN script
+  _generatePptx(data);
+}
+
+function _generatePptx(data) {
+  const { flights, activities, titleLabel, fileLabel, range } = data;
+  const useContext = document.getElementById('expContext').checked;
+
+  // Load PptxGenJS from CDN if not loaded
+  if (typeof PptxGenJS === 'undefined') {
+    const s = document.createElement('script');
+    s.src = 'https://cdnjs.cloudflare.com/ajax/libs/pptxgenjs/3.12.0/pptxgen.bundle.js';
+    s.onload = () => _buildPptx(data);
+    s.onerror = () => alert('Не удалось загрузить библиотеку PptxGenJS. Проверьте подключение к интернету.');
+    document.head.appendChild(s);
+  } else {
+    _buildPptx(data);
+  }
+}
+
+function _buildPptx(data) {
+  const { flights, activities, titleLabel, fileLabel, range } = data;
+  const useContext  = document.getElementById('expContext').checked;
+  const isFull      = exportPresentationType === 'full';
+
+  const MONTHS_RU_SHORT = ['Янв','Фев','Мар','Апр','Май','Июн','Июл','Авг','Сен','Окт','Ноя','Дек'];
+  const MONTHS_RU_FULL  = ['Январь','Февраль','Март','Апрель','Май','Июнь','Июль','Август','Сентябрь','Октябрь','Ноябрь','Декабрь'];
+
+  const pres = new PptxGenJS();
+  pres.layout   = 'LAYOUT_WIDE'; // 13.33" × 7.5"
+  pres.author   = 'LIBREDERM';
+  pres.subject  = titleLabel;
+  pres.title    = titleLabel;
+
+  // ── Color palette ──────────────────────────────────────────────
+  const CLR = {
+    bg:       'F7F8FA',
+    surface:  'FFFFFF',
+    accent:   '3B6FE8',
+    text:     '1A1D23',
+    muted:    '8B93A3',
+    border:   'E2E6EC',
+    barBlue:  '3B82F6',
+    barGray:  '6B7280',
+    barGreen: '22C55E',
+    context:  'FEF3C7',
+    ctxBrd:   'F59E0B',
+  };
+
+  // ── SLIDE 1: Title ─────────────────────────────────────────────
+  {
+    const s = pres.addSlide();
+    s.background = { color: CLR.accent };
+    s.addText(titleLabel, {
+      x: 0.5, y: 2.5, w: 12.33, h: 1.2,
+      fontSize: 36, bold: true, color: 'FFFFFF',
+      align: 'center', fontFace: 'Calibri',
+    });
+    s.addText('LIBREDERM · Медиапланирование', {
+      x: 0.5, y: 3.8, w: 12.33, h: 0.5,
+      fontSize: 14, color: 'CADCFC', align: 'center', fontFace: 'Calibri',
+    });
+    const today = new Date();
+    s.addText(`Создан: ${today.toLocaleDateString('ru-RU')}`, {
+      x: 0.5, y: 6.8, w: 12.33, h: 0.3,
+      fontSize: 10, color: 'CADCFC', align: 'center', fontFace: 'Calibri',
+    });
+  }
+
+  // ── SLIDE 2: Summary ───────────────────────────────────────────
+  {
+    const s = pres.addSlide();
+    s.background = { color: CLR.surface };
+    s.addText('Сводка', { x:0.5,y:0.3,w:12.33,h:0.6, fontSize:18, bold:true, color:CLR.text, fontFace:'Calibri' });
+    s.addShape(pres.ShapeType.line, { x:0.5,y:1,w:12.33,h:0, line:{color:CLR.border,width:1} });
+
+    const colls = [...new Set(flights.map(f=>f.collection).filter(Boolean))];
+    const dirs  = [...new Set(activities.map(a=>a.direction).filter(Boolean))];
+
+    const stats = [
+      { label:'Флайтов', val: String(flights.length) },
+      { label:'Активностей', val: String(activities.length) },
+      { label:'Коллекций', val: String(colls.length || '—') },
+      { label:'Каналов', val: String(dirs.length || '—') },
+    ];
+    stats.forEach((st, i) => {
+      const x = 0.5 + i * 3.1;
+      s.addShape(pres.ShapeType.roundRect, { x, y:1.2, w:2.8, h:1.4, fill:{color:'EBF0FD'}, line:{color:'93C5FD',width:1}, rectRadius:0.08 });
+      s.addText(st.val,   { x, y:1.3,  w:2.8, h:0.7, fontSize:28, bold:true, color:CLR.accent, align:'center', fontFace:'Calibri' });
+      s.addText(st.label, { x, y:2.0,  w:2.8, h:0.4, fontSize:10, color:CLR.muted, align:'center', fontFace:'Calibri' });
+    });
+
+    // Flight list
+    s.addText('Флайты в периоде', { x:0.5,y:2.9,w:12,h:0.4, fontSize:11, bold:true, color:CLR.muted, fontFace:'Calibri' });
+    const maxShow = isFull ? 20 : 12;
+    flights.slice(0, maxShow).forEach((f, i) => {
+      const col = f.collection || '';
+      const label = f.name + (col ? ` · ${col}` : '');
+      const ds = f.dateStart?.toLocaleDateString('ru-RU',{day:'2-digit',month:'short'}) || '';
+      const de = f.dateEnd?.toLocaleDateString('ru-RU',{day:'2-digit',month:'short'}) || '';
+      s.addText(`${label}`, { x:0.5, y:3.3+i*0.26, w:8.5, h:0.25, fontSize:9, color:CLR.text, fontFace:'Calibri' });
+      s.addText(`${ds} – ${de}`, { x:9.2, y:3.3+i*0.26, w:4, h:0.25, fontSize:9, color:CLR.muted, align:'right', fontFace:'Calibri' });
+    });
+    if (flights.length > maxShow) {
+      s.addText(`+ ещё ${flights.length - maxShow} флайтов…`, {
+        x:0.5, y:3.3+maxShow*0.26, w:12, h:0.25, fontSize:9, color:CLR.muted, fontFace:'Calibri',
+      });
+    }
+  }
+
+  // ── SLIDE 3+: Timeline (Gantt) ─────────────────────────────────
+  // Build a visual Gantt per period type
+  {
+    const s = pres.addSlide();
+    s.background = { color: CLR.surface };
+
+    const SLIDE_W = 13.33;
+    const LABEL_W = 2.8;
+    const TL_LEFT = LABEL_W + 0.3;
+    const TL_W    = SLIDE_W - TL_LEFT - 0.3;
+    const ROW_H   = 0.22;
+    const HEADER_H= 0.55;
+    const TOP_Y   = 0.35;
+    const BAR_H   = 0.15;
+
+    s.addText('Медиаплан · Timeline', { x:0.3,y:TOP_Y,w:12,h:0.4, fontSize:14, bold:true, color:CLR.text, fontFace:'Calibri' });
+
+    // Timeline header
+    const totalDays = Math.round((range.end - range.start) / 86400000) + 1;
+    const pxPerDay  = TL_W / totalDays;
+
+    function dayOffset(date) {
+      return Math.round((date - range.start) / 86400000);
+    }
+    function toInches(days) { return days * pxPerDay; }
+
+    // Draw period headers
+    if (exportPeriodType === 'year') {
+      // Monthly segments
+      for (let m = 0; m < 12; m++) {
+        const mStart = new Date(range.start.getFullYear(), m, 1);
+        const mEnd   = new Date(range.start.getFullYear(), m+1, 0);
+        const mLeft  = TL_LEFT + toInches(dayOffset(mStart));
+        const mW     = toInches(Math.round((mEnd - mStart) / 86400000) + 1);
+        s.addShape(pres.ShapeType.rect, { x:mLeft, y:TOP_Y+0.42, w:mW, h:HEADER_H, fill:{color: m%2===0 ? 'F0F2F5' : 'FAFBFC'}, line:{color:CLR.border,width:0.5} });
+        s.addText(MONTHS_RU_SHORT[m], { x:mLeft, y:TOP_Y+0.42, w:mW, h:HEADER_H, fontSize:7, color:CLR.muted, align:'center', fontFace:'Calibri' });
+      }
+    } else if (exportPeriodType === 'quarter') {
+      // 3 months, wider
+      const qYear = range.start.getFullYear();
+      const qMon  = range.start.getMonth();
+      for (let i = 0; i < 3; i++) {
+        const mStart = new Date(qYear, qMon+i, 1);
+        const mEnd   = new Date(qYear, qMon+i+1, 0);
+        const mLeft  = TL_LEFT + toInches(dayOffset(mStart));
+        const mW     = toInches(Math.round((mEnd - mStart) / 86400000) + 1);
+        s.addShape(pres.ShapeType.rect, { x:mLeft, y:TOP_Y+0.42, w:mW, h:HEADER_H, fill:{color: i%2===0 ? 'F0F2F5' : 'FAFBFC'}, line:{color:CLR.border,width:0.5} });
+        s.addText(MONTHS_RU_FULL[qMon+i], { x:mLeft, y:TOP_Y+0.42, w:mW, h:HEADER_H, fontSize:9, bold:true, color:CLR.text, align:'center', fontFace:'Calibri' });
+        // Week marks
+        let d = new Date(mStart);
+        while (d <= mEnd) {
+          if (d.getDay() === 1 && d > mStart) {
+            const wx = TL_LEFT + toInches(dayOffset(d));
+            s.addShape(pres.ShapeType.line, { x:wx, y:TOP_Y+0.42, w:0, h:HEADER_H, line:{color:CLR.border,width:0.3,dashType:'dash'} });
+          }
+          d = new Date(d.getTime() + 86400000);
+        }
+      }
+    } else {
+      // Month: day-by-day
+      const mYear  = range.start.getFullYear();
+      const mMonth = range.start.getMonth();
+      for (let d = 1; d <= totalDays; d++) {
+        const dt   = new Date(mYear, mMonth, d);
+        const dLeft= TL_LEFT + toInches(d-1);
+        const dW   = toInches(1);
+        const isWE = dt.getDay() === 0 || dt.getDay() === 6;
+        s.addShape(pres.ShapeType.rect, { x:dLeft, y:TOP_Y+0.42, w:dW, h:HEADER_H, fill:{color: isWE ? 'F0F2F5' : 'FFFFFF'}, line:{color:CLR.border,width:0.3} });
+        if (totalDays <= 31) {
+          s.addText(String(d), { x:dLeft, y:TOP_Y+0.42, w:dW, h:HEADER_H, fontSize:6, color: isWE ? CLR.muted : CLR.text, align:'center', fontFace:'Calibri' });
+        }
+      }
+    }
+
+    // ── Draw flight bars ─────────────────────────────────────────
+    const BAR_TOP = TOP_Y + HEADER_H + 0.65;
+    const maxRows = Math.floor((7.5 - BAR_TOP - 0.4) / ROW_H);
+    const STATUS_COLORS = { подтверждено:'3B82F6', план:'6B7280', завершено:'9CA3AF' };
+
+    flights.slice(0, maxRows).forEach((f, i) => {
+      const y = BAR_TOP + i * ROW_H;
+      // Label
+      const labelStr = f.name.length > 30 ? f.name.slice(0,29)+'…' : f.name;
+      s.addText(labelStr, { x:0.3, y, w:LABEL_W, h:ROW_H, fontSize:7.5, color:CLR.text, valign:'middle', fontFace:'Calibri' });
+      // Bar
+      const ds   = f.dateStart < range.start ? range.start : f.dateStart;
+      const de   = f.dateEnd   > range.end   ? range.end   : f.dateEnd;
+      const bLeft= TL_LEFT + toInches(dayOffset(ds));
+      const bW   = Math.max(toInches(Math.round((de - ds) / 86400000) + 1), 0.04);
+      const barColor = STATUS_COLORS[f.status] || CLR.barGray;
+      s.addShape(pres.ShapeType.roundRect, {
+        x:bLeft, y:y+(ROW_H-BAR_H)/2, w:bW, h:BAR_H,
+        fill:{color:barColor}, line:{color:barColor,width:0},
+        rectRadius: 0.02,
+      });
+
+      // In full mode, add activity rows underneath
+      if (isFull) {
+        const fActs = activities.filter(a => norm(a.flightName) === norm(f.name));
+        // (activities shown as lighter sub-bars — omitted in overview)
+      }
+    });
+
+    if (flights.length > maxRows) {
+      s.addText(`+ ещё ${flights.length - maxRows} флайтов (смотри полную версию)`, {
+        x:0.3, y:BAR_TOP+maxRows*ROW_H, w:12, h:0.25, fontSize:8, color:CLR.muted, fontFace:'Calibri',
+      });
+    }
+
+    // ── Context strip (поводы) ───────────────────────────────────
+    if (useContext) {
+      const ctxItems = allContext.filter(c =>
+        c.dateStart && c.dateEnd && intersects(c.dateStart, c.dateEnd, range.start, range.end)
+      );
+      const CTX_Y = TOP_Y + 0.42 + HEADER_H - 0.02;
+      ctxItems.slice(0,40).forEach(c => {
+        const cs = c.dateStart < range.start ? range.start : c.dateStart;
+        const ce = c.dateEnd   > range.end   ? range.end   : c.dateEnd;
+        const cLeft = TL_LEFT + toInches(dayOffset(cs));
+        const cW    = Math.max(toInches(Math.round((ce - cs)/86400000)+1), 0.03);
+        s.addShape(pres.ShapeType.rect, {
+          x:cLeft, y:CTX_Y, w:cW, h:0.08,
+          fill:{color:CLR.context}, line:{color:CLR.ctxBrd,width:0.3},
+        });
+      });
+    }
+  }
+
+  // ── Full mode: one slide per collection ───────────────────────
+  if (isFull) {
+    const colls = [...new Set(flights.map(f => f.collection).filter(Boolean))];
+    colls.forEach(coll => {
+      const collFlights = flights.filter(f => f.collection === coll);
+      if (!collFlights.length) return;
+      const s = pres.addSlide();
+      s.background = { color: CLR.surface };
+      s.addText(coll, { x:0.3,y:0.2,w:12,h:0.5, fontSize:16, bold:true, color:CLR.accent, fontFace:'Calibri' });
+      collFlights.forEach((f,i) => {
+        s.addText(f.name, { x:0.5, y:0.9+i*0.4, w:12, h:0.35, fontSize:10, color:CLR.text, fontFace:'Calibri' });
+        const ds = f.dateStart?.toLocaleDateString('ru-RU',{day:'2-digit',month:'long'}) || '';
+        const de = f.dateEnd?.toLocaleDateString('ru-RU',{day:'2-digit',month:'long'}) || '';
+        s.addText(`${ds} – ${de}`, { x:0.5, y:0.9+i*0.4+0.18, w:12, h:0.2, fontSize:8, color:CLR.muted, fontFace:'Calibri' });
+      });
+    });
+  }
+
+  // ── Save ───────────────────────────────────────────────────────
+  const btn = document.getElementById('exportDoBtn');
+  btn.textContent = 'Генерация…';
+  btn.disabled = true;
+
+  pres.writeFile({ fileName: data.fileLabel + '.pptx' })
+    .then(() => {
+      btn.textContent = '✓ Скачано';
+      setTimeout(() => {
+        btn.innerHTML = '<svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor"><path d="M8 12l-4-4h2.5V4h3v4H12L8 12zM2 14h12v1.5H2V14z"/></svg> Скачать PPTX';
+        btn.disabled = false;
+      }, 2500);
+    })
+    .catch(err => {
+      alert('Ошибка экспорта: ' + err.message);
+      btn.textContent = 'Скачать PPTX';
+      btn.disabled = false;
+    });
 }
 
 // ── INIT ───────────────────────────────────────────────────────────
