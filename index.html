@@ -3190,10 +3190,59 @@ function _generatePptx(data) {
 function _buildPptx(data) {
   const { flights, activities, titleLabel, fileLabel, range } = data;
   const useContext  = document.getElementById('expContext').checked;
-  const isFull      = exportPresentationType === 'full';
 
   const MONTHS_RU_SHORT = ['Янв','Фев','Мар','Апр','Май','Июн','Июл','Авг','Сен','Окт','Ноя','Дек'];
   const MONTHS_RU_FULL  = ['Январь','Февраль','Март','Апрель','Май','Июнь','Июль','Август','Сентябрь','Октябрь','Ноябрь','Декабрь'];
+  const MONTHS_GEN_RU   = ['января','февраля','марта','апреля','мая','июня','июля','августа','сентября','октября','ноября','декабря'];
+
+  // ── Helpers ───────────────────────────────────────────────────────
+  function fmtDate(d) {
+    if (!d) return '';
+    return d.getDate() + ' ' + MONTHS_GEN_RU[d.getMonth()] + ' ' + d.getFullYear();
+  }
+  function fmtDateShort(d) {
+    if (!d) return '';
+    return MONTHS_RU_SHORT[d.getMonth()] + ' ' + d.getFullYear();
+  }
+  function fmtRange(ds, de) {
+    if (!ds || !de) return '';
+    if (ds.getMonth() === de.getMonth() && ds.getFullYear() === de.getFullYear())
+      return ds.getDate() + '–' + de.getDate() + ' ' + MONTHS_GEN_RU[ds.getMonth()];
+    return fmtDateShort(ds) + ' – ' + fmtDateShort(de);
+  }
+  // Get collection color hex (no #)
+  function collColor(collSlug) {
+    const hex = (colorMap[norm(collSlug)] || colorMap[collSlug] || '#6B7280').replace('#','');
+    return hex || '6B7280';
+  }
+  // Get collection display name from slug
+  function collName(slug) {
+    const c = allCollections.find(c => c.slug === slug || c.slug === norm(slug));
+    return c ? c.name : slug;
+  }
+  // Lighten a hex color (blend toward white)
+  function lighten(hex, pct) {
+    let r = parseInt(hex.slice(0,2),16), g = parseInt(hex.slice(2,4),16), b = parseInt(hex.slice(4,6),16);
+    r = Math.round(r + (255-r)*pct); g = Math.round(g + (255-g)*pct); b = Math.round(b + (255-b)*pct);
+    return [r,g,b].map(v=>v.toString(16).padStart(2,'0')).join('');
+  }
+  // Check if flight has substantive detail (2+ meaningful fields)
+  function isSubstantive(f) {
+    const fActs = activities.filter(a => norm(a.flightName) === norm(f.name));
+    let score = 0;
+    if (f.taFinal) score++;
+    if (f.claimFinal) score++;
+    if (f.sku1 || f.sku2 || f.sku3) score++;
+    if (f.brief) score++;
+    if (fActs.length > 0) score++;
+    const platforms = fActs.filter(a => a.platforms).length;
+    if (platforms > 0) score++;
+    const formats = fActs.filter(a => a.format).length;
+    if (formats > 0) score++;
+    if (f.comment) score++;
+    if (f.specDocUrl || f.materialsUrl) score++;
+    return score >= 2;
+  }
 
   const pres = new PptxGenJS();
   pres.layout   = 'LAYOUT_WIDE'; // 13.33" × 7.5"
@@ -3203,225 +3252,750 @@ function _buildPptx(data) {
 
   // ── Color palette ──────────────────────────────────────────────
   const CLR = {
-    bg:       'F7F8FA',
-    surface:  'FFFFFF',
-    accent:   '3B6FE8',
-    text:     '1A1D23',
-    muted:    '8B93A3',
-    border:   'E2E6EC',
-    barBlue:  '3B82F6',
-    barGray:  '6B7280',
-    barGreen: '22C55E',
-    context:  'FEF3C7',
-    ctxBrd:   'F59E0B',
+    bg:      'F7F8FA',
+    white:   'FFFFFF',
+    text:    '1A1D23',
+    muted:   '8B93A3',
+    border:  'E2E6EC',
+    cover:   '1A2B4A',   // dark navy for cover
+    gray:    '6B7280',
+    green:   '22C55E',
+    red:     'E53E3E',
+    dimmed:  'A0AEC0',
+    amber:   'F59E0B',
+    lblue:   'EBF0FD',
   };
+  const FONT = 'Calibri';
 
-  // ── SLIDE 1: Title ─────────────────────────────────────────────
-  {
-    const s = pres.addSlide();
-    s.background = { color: CLR.accent };
-    s.addText(titleLabel, {
-      x: 0.5, y: 2.5, w: 12.33, h: 1.2,
-      fontSize: 36, bold: true, color: 'FFFFFF',
-      align: 'center', fontFace: 'Calibri',
-    });
-    s.addText('LIBREDERM · Медиапланирование', {
-      x: 0.5, y: 3.8, w: 12.33, h: 0.5,
-      fontSize: 14, color: 'CADCFC', align: 'center', fontFace: 'Calibri',
-    });
-    const today = new Date();
-    s.addText(`Создан: ${today.toLocaleDateString('ru-RU')}`, {
-      x: 0.5, y: 6.8, w: 12.33, h: 0.3,
-      fontSize: 10, color: 'CADCFC', align: 'center', fontFace: 'Calibri',
-    });
-  }
-
-  // ── SLIDE 2: Summary ───────────────────────────────────────────
-  {
-    const s = pres.addSlide();
-    s.background = { color: CLR.surface };
-    s.addText('Сводка', { x:0.5,y:0.3,w:12.33,h:0.6, fontSize:18, bold:true, color:CLR.text, fontFace:'Calibri' });
-    s.addShape(pres.ShapeType.line, { x:0.5,y:1,w:12.33,h:0, line:{color:CLR.border,width:1} });
-
-    const colls = [...new Set(flights.map(f=>f.collection).filter(Boolean))];
-    const dirs  = [...new Set(activities.map(a=>a.direction).filter(Boolean))];
-
-    const stats = [
-      { label:'Флайтов', val: String(flights.length) },
-      { label:'Активностей', val: String(activities.length) },
-      { label:'Коллекций', val: String(colls.length || '—') },
-      { label:'Каналов', val: String(dirs.length || '—') },
-    ];
-    stats.forEach((st, i) => {
-      const x = 0.5 + i * 3.1;
-      s.addShape(pres.ShapeType.roundRect, { x, y:1.2, w:2.8, h:1.4, fill:{color:'EBF0FD'}, line:{color:'93C5FD',width:1}, rectRadius:0.08 });
-      s.addText(st.val,   { x, y:1.3,  w:2.8, h:0.7, fontSize:28, bold:true, color:CLR.accent, align:'center', fontFace:'Calibri' });
-      s.addText(st.label, { x, y:2.0,  w:2.8, h:0.4, fontSize:10, color:CLR.muted, align:'center', fontFace:'Calibri' });
-    });
-
-    // Flight list
-    s.addText('Флайты в периоде', { x:0.5,y:2.9,w:12,h:0.4, fontSize:11, bold:true, color:CLR.muted, fontFace:'Calibri' });
-    const maxShow = isFull ? 20 : 12;
-    flights.slice(0, maxShow).forEach((f, i) => {
-      const col = f.collection || '';
-      const label = f.name + (col ? ` · ${col}` : '');
-      const ds = f.dateStart?.toLocaleDateString('ru-RU',{day:'2-digit',month:'short'}) || '';
-      const de = f.dateEnd?.toLocaleDateString('ru-RU',{day:'2-digit',month:'short'}) || '';
-      s.addText(`${label}`, { x:0.5, y:3.3+i*0.26, w:8.5, h:0.25, fontSize:9, color:CLR.text, fontFace:'Calibri' });
-      s.addText(`${ds} – ${de}`, { x:9.2, y:3.3+i*0.26, w:4, h:0.25, fontSize:9, color:CLR.muted, align:'right', fontFace:'Calibri' });
-    });
-    if (flights.length > maxShow) {
-      s.addText(`+ ещё ${flights.length - maxShow} флайтов…`, {
-        x:0.5, y:3.3+maxShow*0.26, w:12, h:0.25, fontSize:9, color:CLR.muted, fontFace:'Calibri',
-      });
+  // ── Status dot color ─────────────────────────────────────────
+  function statusDotColor(st) {
+    switch((st||'').toLowerCase()) {
+      case 'подтверждено': return CLR.green;
+      case 'завершено':    return CLR.dimmed;
+      case 'отменено':     return CLR.red;
+      default:             return CLR.gray; // план
     }
   }
 
-  // ── SLIDE 3+: Timeline (Gantt) ─────────────────────────────────
-  // Build a visual Gantt per period type
-  {
-    const s = pres.addSlide();
-    s.background = { color: CLR.surface };
+  // ── Slide header helper ──────────────────────────────────────
+  function addSlideHeader(s, title, subtitle) {
+    s.background = { color: CLR.white };
+    s.addText('LIBREDERM', {
+      x:0.45, y:0.22, w:3, h:0.22,
+      fontSize:7, bold:true, color:CLR.muted, fontFace:FONT, charSpacing:2,
+      isTextBox:true,
+    });
+    s.addText(title, {
+      x:0.45, y:0.42, w:9.5, h:0.55,
+      fontSize:22, bold:true, color:CLR.text, fontFace:FONT,
+      isTextBox:true,
+    });
+    if (subtitle) {
+      s.addText(subtitle, {
+        x:0.45, y:0.95, w:9.5, h:0.28,
+        fontSize:10, color:CLR.muted, fontFace:FONT,
+        isTextBox:true,
+      });
+    }
+    s.addShape(pres.ShapeType.line, {
+      x:0.45, y:1.28, w:12.43, h:0,
+      line:{color:CLR.border,width:0.75},
+    });
+  }
 
+  // ── Timeline builder ─────────────────────────────────────────
+  function buildTimelineSlide(s, flightsToShow, rStart, rEnd, headerTitle, showContext) {
     const SLIDE_W = 13.33;
-    const LABEL_W = 2.8;
-    const TL_LEFT = LABEL_W + 0.3;
-    const TL_W    = SLIDE_W - TL_LEFT - 0.3;
-    const ROW_H   = 0.22;
-    const HEADER_H= 0.55;
-    const TOP_Y   = 0.35;
-    const BAR_H   = 0.15;
-
-    s.addText('Медиаплан · Timeline', { x:0.3,y:TOP_Y,w:12,h:0.4, fontSize:14, bold:true, color:CLR.text, fontFace:'Calibri' });
-
-    // Timeline header
-    const totalDays = Math.round((range.end - range.start) / 86400000) + 1;
+    const LABEL_W = 2.6;
+    const TL_LEFT = LABEL_W + 0.4;
+    const TL_W    = SLIDE_W - TL_LEFT - 0.4;
+    const ROW_H   = 0.26;
+    const HDR_H   = 0.32;
+    const TOP_Y   = 1.48;
+    const BAR_H   = 0.16;
+    const totalDays = Math.round((rEnd - rStart) / 86400000) + 1;
     const pxPerDay  = TL_W / totalDays;
 
-    function dayOffset(date) {
-      return Math.round((date - range.start) / 86400000);
-    }
-    function toInches(days) { return days * pxPerDay; }
+    function dOff(d) { return Math.round((d - rStart) / 86400000); }
+    function toIn(days) { return days * pxPerDay; }
 
-    // Draw period headers
-    if (exportPeriodType === 'year') {
-      // Monthly segments
-      for (let m = 0; m < 12; m++) {
-        const mStart = new Date(range.start.getFullYear(), m, 1);
-        const mEnd   = new Date(range.start.getFullYear(), m+1, 0);
-        const mLeft  = TL_LEFT + toInches(dayOffset(mStart));
-        const mW     = toInches(Math.round((mEnd - mStart) / 86400000) + 1);
-        s.addShape(pres.ShapeType.rect, { x:mLeft, y:TOP_Y+0.42, w:mW, h:HEADER_H, fill:{color: m%2===0 ? 'F0F2F5' : 'FAFBFC'}, line:{color:CLR.border,width:0.5} });
-        s.addText(MONTHS_RU_SHORT[m], { x:mLeft, y:TOP_Y+0.42, w:mW, h:HEADER_H, fontSize:7, color:CLR.muted, align:'center', fontFace:'Calibri' });
-      }
-    } else if (exportPeriodType === 'quarter') {
-      // 3 months, wider
-      const qYear = range.start.getFullYear();
-      const qMon  = range.start.getMonth();
-      for (let i = 0; i < 3; i++) {
-        const mStart = new Date(qYear, qMon+i, 1);
-        const mEnd   = new Date(qYear, qMon+i+1, 0);
-        const mLeft  = TL_LEFT + toInches(dayOffset(mStart));
-        const mW     = toInches(Math.round((mEnd - mStart) / 86400000) + 1);
-        s.addShape(pres.ShapeType.rect, { x:mLeft, y:TOP_Y+0.42, w:mW, h:HEADER_H, fill:{color: i%2===0 ? 'F0F2F5' : 'FAFBFC'}, line:{color:CLR.border,width:0.5} });
-        s.addText(MONTHS_RU_FULL[qMon+i], { x:mLeft, y:TOP_Y+0.42, w:mW, h:HEADER_H, fontSize:9, bold:true, color:CLR.text, align:'center', fontFace:'Calibri' });
-        // Week marks
-        let d = new Date(mStart);
-        while (d <= mEnd) {
-          if (d.getDay() === 1 && d > mStart) {
-            const wx = TL_LEFT + toInches(dayOffset(d));
-            s.addShape(pres.ShapeType.line, { x:wx, y:TOP_Y+0.42, w:0, h:HEADER_H, line:{color:CLR.border,width:0.3,dashType:'dash'} });
-          }
-          d = new Date(d.getTime() + 86400000);
-        }
-      }
-    } else {
-      // Month: day-by-day
-      const mYear  = range.start.getFullYear();
-      const mMonth = range.start.getMonth();
-      for (let d = 1; d <= totalDays; d++) {
-        const dt   = new Date(mYear, mMonth, d);
-        const dLeft= TL_LEFT + toInches(d-1);
-        const dW   = toInches(1);
-        const isWE = dt.getDay() === 0 || dt.getDay() === 6;
-        s.addShape(pres.ShapeType.rect, { x:dLeft, y:TOP_Y+0.42, w:dW, h:HEADER_H, fill:{color: isWE ? 'F0F2F5' : 'FFFFFF'}, line:{color:CLR.border,width:0.3} });
-        if (totalDays <= 31) {
-          s.addText(String(d), { x:dLeft, y:TOP_Y+0.42, w:dW, h:HEADER_H, fontSize:6, color: isWE ? CLR.muted : CLR.text, align:'center', fontFace:'Calibri' });
-        }
-      }
-    }
-
-    // ── Draw flight bars ─────────────────────────────────────────
-    const BAR_TOP = TOP_Y + HEADER_H + 0.65;
-    const maxRows = Math.floor((7.5 - BAR_TOP - 0.4) / ROW_H);
-    const STATUS_COLORS = { подтверждено:'3B82F6', план:'6B7280', завершено:'9CA3AF' };
-
-    flights.slice(0, maxRows).forEach((f, i) => {
-      const y = BAR_TOP + i * ROW_H;
-      // Label
-      const labelStr = f.name.length > 30 ? f.name.slice(0,29)+'…' : f.name;
-      s.addText(labelStr, { x:0.3, y, w:LABEL_W, h:ROW_H, fontSize:7.5, color:CLR.text, valign:'middle', fontFace:'Calibri' });
-      // Bar
-      const ds   = f.dateStart < range.start ? range.start : f.dateStart;
-      const de   = f.dateEnd   > range.end   ? range.end   : f.dateEnd;
-      const bLeft= TL_LEFT + toInches(dayOffset(ds));
-      const bW   = Math.max(toInches(Math.round((de - ds) / 86400000) + 1), 0.04);
-      const barColor = STATUS_COLORS[f.status] || CLR.barGray;
-      s.addShape(pres.ShapeType.roundRect, {
-        x:bLeft, y:y+(ROW_H-BAR_H)/2, w:bW, h:BAR_H,
-        fill:{color:barColor}, line:{color:barColor,width:0},
-        rectRadius: 0.02,
+    // Month header row
+    const calYear = rStart.getFullYear();
+    for (let m = 0; m < 12; m++) {
+      const mStart = new Date(calYear, m, 1);
+      const mEnd   = new Date(calYear, m+1, 0);
+      if (mEnd < rStart || mStart > rEnd) continue;
+      const cs = mStart < rStart ? rStart : mStart;
+      const ce = mEnd   > rEnd   ? rEnd   : mEnd;
+      const mL = TL_LEFT + toIn(dOff(cs));
+      const mW = toIn(Math.round((ce - cs) / 86400000) + 1);
+      const isEven = m % 2 === 0;
+      s.addShape(pres.ShapeType.rect, {
+        x:mL, y:TOP_Y, w:mW, h:HDR_H,
+        fill:{color: isEven ? 'F5F7FA' : 'FAFBFC'},
+        line:{color:CLR.border,width:0.4},
       });
-
-      // In full mode, add activity rows underneath
-      if (isFull) {
-        const fActs = activities.filter(a => norm(a.flightName) === norm(f.name));
-        // (activities shown as lighter sub-bars — omitted in overview)
-      }
-    });
-
-    if (flights.length > maxRows) {
-      s.addText(`+ ещё ${flights.length - maxRows} флайтов (смотри полную версию)`, {
-        x:0.3, y:BAR_TOP+maxRows*ROW_H, w:12, h:0.25, fontSize:8, color:CLR.muted, fontFace:'Calibri',
+      s.addText(MONTHS_RU_SHORT[m], {
+        x:mL, y:TOP_Y, w:mW, h:HDR_H,
+        fontSize:7, color:CLR.muted, align:'center', valign:'middle', fontFace:FONT,
+        isTextBox:true,
       });
     }
 
-    // ── Context strip (поводы) ───────────────────────────────────
-    if (useContext) {
+    // Context strip (thin band above bars)
+    if (showContext) {
       const ctxItems = allContext.filter(c =>
-        c.dateStart && c.dateEnd && intersects(c.dateStart, c.dateEnd, range.start, range.end)
+        c.dateStart && c.dateEnd && intersects(c.dateStart, c.dateEnd, rStart, rEnd)
       );
-      const CTX_Y = TOP_Y + 0.42 + HEADER_H - 0.02;
-      ctxItems.slice(0,40).forEach(c => {
-        const cs = c.dateStart < range.start ? range.start : c.dateStart;
-        const ce = c.dateEnd   > range.end   ? range.end   : c.dateEnd;
-        const cLeft = TL_LEFT + toInches(dayOffset(cs));
-        const cW    = Math.max(toInches(Math.round((ce - cs)/86400000)+1), 0.03);
+      const CTX_Y = TOP_Y + HDR_H;
+      ctxItems.slice(0,60).forEach(c => {
+        const cs = c.dateStart < rStart ? rStart : c.dateStart;
+        const ce = c.dateEnd   > rEnd   ? rEnd   : c.dateEnd;
+        const cL = TL_LEFT + toIn(dOff(cs));
+        const cW = Math.max(toIn(Math.round((ce-cs)/86400000)+1), 0.03);
+        const ctxClr = c.type.toLowerCase() === 'сезонность' ? 'DBEAFE'
+                     : c.type.toLowerCase() === 'событие'    ? 'EDE9FE'
+                     : c.type.toLowerCase() === 'лонч'       ? 'D1FAE5'
+                     : 'FEF3C7';
         s.addShape(pres.ShapeType.rect, {
-          x:cLeft, y:CTX_Y, w:cW, h:0.08,
-          fill:{color:CLR.context}, line:{color:CLR.ctxBrd,width:0.3},
+          x:cL, y:CTX_Y, w:cW, h:0.07,
+          fill:{color:ctxClr}, line:{color:CLR.border,width:0.2},
         });
       });
     }
+
+    const BAR_TOP = TOP_Y + HDR_H + (showContext ? 0.1 : 0.05);
+    const maxRows = Math.floor((7.2 - BAR_TOP) / ROW_H);
+
+    flightsToShow.slice(0, maxRows).forEach((f, i) => {
+      const y = BAR_TOP + i * ROW_H;
+      const collHex = collColor(f.collection);
+      const dotClr  = statusDotColor(f.status);
+
+      // Status dot
+      s.addShape(pres.ShapeType.ellipse, {
+        x:0.3, y:y+(ROW_H-0.1)/2, w:0.1, h:0.1,
+        fill:{color:dotClr}, line:{color:dotClr,width:0},
+      });
+      // Label
+      const lbl = (collName(f.collection) || f.name).slice(0, 32);
+      s.addText(lbl, {
+        x:0.45, y, w:LABEL_W-0.2, h:ROW_H,
+        fontSize:7.5, color:CLR.text, valign:'middle', fontFace:FONT,
+        isTextBox:true,
+      });
+
+      // Bar
+      const ds = f.dateStart < rStart ? rStart : f.dateStart;
+      const de = f.dateEnd   > rEnd   ? rEnd   : f.dateEnd;
+      if (ds > de) return;
+      const bL = TL_LEFT + toIn(dOff(ds));
+      const bW = Math.max(toIn(Math.round((de-ds)/86400000)+1), 0.08);
+      s.addShape(pres.ShapeType.roundRect, {
+        x:bL, y:y+(ROW_H-BAR_H)/2, w:bW, h:BAR_H,
+        fill:{color:collHex}, line:{color:collHex,width:0},
+        rectRadius:0.02,
+      });
+      // Bar label if wide enough
+      if (bW > 0.6) {
+        const flightLbl = f.name.slice(0, Math.floor(bW*10));
+        s.addText(flightLbl, {
+          x:bL+0.04, y:y+(ROW_H-BAR_H)/2, w:bW-0.08, h:BAR_H,
+          fontSize:6, color:CLR.white, valign:'middle', fontFace:FONT,
+          isTextBox:true,
+        });
+      }
+    });
+
+    if (flightsToShow.length > maxRows) {
+      s.addText(`+ ещё ${flightsToShow.length - maxRows} кампаний`, {
+        x:0.45, y:BAR_TOP + maxRows * ROW_H + 0.05, w:12, h:0.22,
+        fontSize:8, color:CLR.muted, fontFace:FONT, isTextBox:true,
+      });
+    }
   }
 
-  // ── Full mode: one slide per collection ───────────────────────
-  if (isFull) {
-    const colls = [...new Set(flights.map(f => f.collection).filter(Boolean))];
-    colls.forEach(coll => {
-      const collFlights = flights.filter(f => f.collection === coll);
-      if (!collFlights.length) return;
-      const s = pres.addSlide();
-      s.background = { color: CLR.surface };
-      s.addText(coll, { x:0.3,y:0.2,w:12,h:0.5, fontSize:16, bold:true, color:CLR.accent, fontFace:'Calibri' });
-      collFlights.forEach((f,i) => {
-        s.addText(f.name, { x:0.5, y:0.9+i*0.4, w:12, h:0.35, fontSize:10, color:CLR.text, fontFace:'Calibri' });
-        const ds = f.dateStart?.toLocaleDateString('ru-RU',{day:'2-digit',month:'long'}) || '';
-        const de = f.dateEnd?.toLocaleDateString('ru-RU',{day:'2-digit',month:'long'}) || '';
-        s.addText(`${ds} – ${de}`, { x:0.5, y:0.9+i*0.4+0.18, w:12, h:0.2, fontSize:8, color:CLR.muted, fontFace:'Calibri' });
+  // ═══════════════════════════════════════════════════════════════
+  // SLIDE 1 — COVER
+  // ═══════════════════════════════════════════════════════════════
+  {
+    const s = pres.addSlide();
+    s.background = { color: CLR.cover };
+
+    // LIBREDERM label top-left
+    s.addText('LIBREDERM', {
+      x:0.55, y:0.45, w:6, h:0.35,
+      fontSize:11, bold:true, color:'CADCFC', fontFace:FONT, charSpacing:4,
+      isTextBox:true,
+    });
+
+    // Main title
+    s.addText('КОММУНИКАЦИЯ\nИ РЕКЛАМА', {
+      x:0.55, y:1.8, w:9, h:2.2,
+      fontSize:52, bold:true, color:'FFFFFF', fontFace:FONT,
+      isTextBox:true, lineSpacingMultiple:1.05,
+    });
+
+    // Subtitle
+    s.addText(titleLabel, {
+      x:0.55, y:4.1, w:9, h:0.55,
+      fontSize:18, color:'CADCFC', fontFace:FONT,
+      isTextBox:true,
+    });
+
+    // Decorative right block
+    s.addShape(pres.ShapeType.rect, {
+      x:11.0, y:0, w:2.33, h:7.5,
+      fill:{color:'243B5E'}, line:{color:'243B5E',width:0},
+    });
+    s.addShape(pres.ShapeType.rect, {
+      x:10.7, y:5.8, w:2.63, h:1.7,
+      fill:{color:'3B6FE8'}, line:{color:'3B6FE8',width:0},
+    });
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  // SLIDE 2 — ADVERTISING CALENDAR (TIMELINE)
+  // ═══════════════════════════════════════════════════════════════
+  {
+    const s = pres.addSlide();
+    const year = range.start.getFullYear();
+    const rStart = new Date(year, 0, 1);
+    const rEnd   = new Date(year, 11, 31);
+    addSlideHeader(s, 'Рекламный календарь ' + year,
+      exportPeriodType === 'year' ? null : `${range.start.toLocaleDateString('ru-RU',{day:'2-digit',month:'short'})} – ${range.end.toLocaleDateString('ru-RU',{day:'2-digit',month:'short'})}`
+    );
+
+    // Group flights by collection for display (one row per collection)
+    const collSet = [...new Set(flights.map(f=>f.collection).filter(Boolean))];
+    const collFlightRows = collSet.map(cs => {
+      return flights.filter(f=>f.collection===cs);
+    });
+
+    // If quarter/month — show only in range, grouped
+    const displayRange = { start: range.start, end: range.end };
+    buildTimelineSlide(s, flights, range.start, range.end, 'timeline', useContext);
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  // SLIDE 3 — ADVERTISING SUPPORT PRIORITIES
+  // ═══════════════════════════════════════════════════════════════
+  {
+    const s = pres.addSlide();
+    addSlideHeader(s, 'Приоритеты рекламной поддержки', null);
+
+    // Group flights by activity count → proxy for priority
+    const scored = flights.map(f => {
+      const fActs = activities.filter(a => norm(a.flightName) === norm(f.name));
+      return { f, score: fActs.length };
+    });
+    scored.sort((a,b) => b.score - a.score);
+
+    // Bucket into tiers
+    const tiers = [
+      { label:'Максимальный',   items: scored.filter(x=>x.score>=4) },
+      { label:'Высокий',        items: scored.filter(x=>x.score>=2 && x.score<4) },
+      { label:'Поддержка',      items: scored.filter(x=>x.score===1) },
+      { label:'Тест / Обзор',   items: scored.filter(x=>x.score===0) },
+    ];
+
+    const TIER_X = [0.45, 3.6, 6.75, 9.9];
+    const TIER_W = 2.9;
+    const CONTENT_Y = 1.55;
+
+    tiers.forEach((tier, ti) => {
+      if (!tier.items.length) return;
+      const x = TIER_X[ti];
+
+      // Tier header
+      s.addShape(pres.ShapeType.roundRect, {
+        x, y:CONTENT_Y, w:TIER_W, h:0.3,
+        fill:{color:'EBF0FD'}, line:{color:'C7D7F7',width:0.5},
+        rectRadius:0.04,
+      });
+      s.addText(tier.label, {
+        x, y:CONTENT_Y, w:TIER_W, h:0.3,
+        fontSize:8, bold:true, color:'3B6FE8', align:'center', valign:'middle', fontFace:FONT,
+        isTextBox:true,
+      });
+
+      // Cards for each flight
+      tier.items.forEach((item, ci) => {
+        const f = item.f;
+        const cy = CONTENT_Y + 0.38 + ci * 1.1;
+        if (cy + 1.0 > 7.3) return; // overflow protection
+        const hex = collColor(f.collection);
+        const lightHex = lighten(hex, 0.88);
+
+        s.addShape(pres.ShapeType.roundRect, {
+          x, y:cy, w:TIER_W, h:1.0,
+          fill:{color:lightHex}, line:{color:hex,width:0.6},
+          rectRadius:0.06,
+        });
+        // Accent top strip
+        s.addShape(pres.ShapeType.roundRect, {
+          x, y:cy, w:TIER_W, h:0.12,
+          fill:{color:hex}, line:{color:hex,width:0},
+          rectRadius:0.04,
+        });
+        const cName = collName(f.collection) || f.name;
+        s.addText(cName.slice(0,28), {
+          x:x+0.1, y:cy+0.16, w:TIER_W-0.2, h:0.26,
+          fontSize:9, bold:true, color:CLR.text, fontFace:FONT,
+          isTextBox:true,
+        });
+        const period = fmtRange(f.dateStart, f.dateEnd);
+        s.addText(period, {
+          x:x+0.1, y:cy+0.42, w:TIER_W-0.2, h:0.2,
+          fontSize:8, color:CLR.muted, fontFace:FONT,
+          isTextBox:true,
+        });
+        // SKU line
+        const skus = [f.sku1,f.sku2,f.sku3].filter(Boolean).join(', ');
+        if (skus) {
+          s.addText(skus.slice(0,40), {
+            x:x+0.1, y:cy+0.62, w:TIER_W-0.2, h:0.22,
+            fontSize:7, color:CLR.muted, fontFace:FONT,
+            isTextBox:true,
+          });
+        }
       });
     });
   }
+
+  // ── Campaign cards helper ────────────────────────────────────
+  function _addCampaignCards(pres, s, flightList, acts, startY) {
+    // Layout: 3-column responsive grid of compact cards
+    const COLS   = 3;
+    const CARD_W = 3.9;
+    const CARD_H = 1.6;
+    const GAP_X  = 0.27;
+    const GAP_Y  = 0.22;
+    const START_X = 0.45;
+
+    flightList.slice(0, 18).forEach((f, i) => {
+      const col = i % COLS;
+      const row = Math.floor(i / COLS);
+      const cx  = START_X + col * (CARD_W + GAP_X);
+      const cy  = startY  + row * (CARD_H + GAP_Y);
+      if (cy + CARD_H > 7.3) return;
+
+      const hex      = collColor(f.collection);
+      const lightHex = lighten(hex, 0.9);
+      const fActs    = acts.filter(a => norm(a.flightName) === norm(f.name));
+      const score    = fActs.length;
+      const priority = score >= 4 ? 'Максимальный'
+                     : score >= 2 ? 'Высокий'
+                     : score === 1 ? 'Поддержка'
+                     : 'Обзор';
+      const priColors = {
+        'Максимальный':'3B6FE8','Высокий':'059669','Поддержка':'F59E0B','Обзор':CLR.gray
+      };
+      const priHex = priColors[priority] || CLR.gray;
+
+      // Card background
+      s.addShape(pres.ShapeType.roundRect, {
+        x:cx, y:cy, w:CARD_W, h:CARD_H,
+        fill:{color:lightHex}, line:{color:hex,width:0.6},
+        rectRadius:0.07,
+      });
+      // Top accent strip
+      s.addShape(pres.ShapeType.rect, {
+        x:cx, y:cy, w:CARD_W, h:0.1,
+        fill:{color:hex}, line:{color:hex,width:0},
+      });
+
+      // Collection name
+      const cName = (collName(f.collection) || f.name).slice(0, 32);
+      s.addText(cName, {
+        x:cx+0.12, y:cy+0.16, w:CARD_W-0.24, h:0.28,
+        fontSize:9, bold:true, color:CLR.text, fontFace:FONT,
+        isTextBox:true,
+      });
+
+      // Period
+      const period = fmtRange(f.dateStart, f.dateEnd);
+      if (period) {
+        s.addText(period, {
+          x:cx+0.12, y:cy+0.45, w:CARD_W-0.24, h:0.22,
+          fontSize:8, color:CLR.muted, fontFace:FONT,
+          isTextBox:true,
+        });
+      }
+
+      // Product focus (SKUs or brief)
+      const skus = [f.sku1,f.sku2,f.sku3].filter(Boolean);
+      const focus = skus.length > 0 ? skus.join(', ') : (f.brief ? f.brief.slice(0,50) : '');
+      if (focus) {
+        s.addText(focus.slice(0,55), {
+          x:cx+0.12, y:cy+0.68, w:CARD_W-0.24, h:0.32,
+          fontSize:7.5, color:CLR.text, fontFace:FONT, lineSpacingMultiple:1.2,
+          isTextBox:true,
+        });
+      }
+
+      // Priority badge (bottom-right)
+      const badgeW = 1.1;
+      const badgeX = cx + CARD_W - badgeW - 0.1;
+      s.addShape(pres.ShapeType.roundRect, {
+        x:badgeX, y:cy+CARD_H-0.3, w:badgeW, h:0.22,
+        fill:{color:lighten(priHex, 0.88)}, line:{color:priHex,width:0.4},
+        rectRadius:0.11,
+      });
+      s.addText(priority, {
+        x:badgeX, y:cy+CARD_H-0.3, w:badgeW, h:0.22,
+        fontSize:6.5, color:priHex, align:'center', valign:'middle', fontFace:FONT,
+        isTextBox:true,
+      });
+
+      // Status dot (top-right corner)
+      const dotC = statusDotColor(f.status);
+      s.addShape(pres.ShapeType.ellipse, {
+        x:cx+CARD_W-0.2, y:cy+0.16, w:0.1, h:0.1,
+        fill:{color:dotC}, line:{color:dotC,width:0},
+      });
+    });
+
+    if (flightList.length > 18) {
+      const moreRow = Math.floor(18 / COLS);
+      const moreY   = startY + moreRow * (CARD_H + GAP_Y);
+      s.addText(`+ ещё ${flightList.length - 18} кампаний`, {
+        x:START_X, y:moreY, w:12, h:0.26,
+        fontSize:9, color:CLR.muted, fontFace:FONT, isTextBox:true,
+      });
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  // SLIDE 4 — H1 CAMPAIGNS (Jan–Jun) — only for year view
+  // SLIDE for quarter/month — all campaigns
+  // ═══════════════════════════════════════════════════════════════
+  {
+    // H1 or single period
+    const h1Flights = exportPeriodType === 'year'
+      ? flights.filter(f => f.dateStart && f.dateStart.getMonth() < 6)
+      : flights;
+
+    if (h1Flights.length > 0) {
+      const s = pres.addSlide();
+      const slideTitle = exportPeriodType === 'year' ? 'Кампании I полугодия' : 'Кампании периода';
+      addSlideHeader(s, slideTitle, null);
+      _addCampaignCards(pres, s, h1Flights, activities, 1.6);
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  // SLIDE 5 — H2 CAMPAIGNS (Jul–Dec) — only for year view
+  // ═══════════════════════════════════════════════════════════════
+  if (exportPeriodType === 'year') {
+    const h2Flights = flights.filter(f => f.dateStart && f.dateStart.getMonth() >= 6);
+    if (h2Flights.length > 0) {
+      const s = pres.addSlide();
+      addSlideHeader(s, 'Кампании II полугодия', null);
+      _addCampaignCards(pres, s, h2Flights, activities, 1.6);
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  // SLIDE 6 — MARKETING CONTEXT (only if useContext)
+  // ═══════════════════════════════════════════════════════════════
+  if (useContext) {
+    const ctxInRange = allContext.filter(c =>
+      c.dateStart && c.dateEnd && intersects(c.dateStart, c.dateEnd, range.start, range.end)
+    );
+    if (ctxInRange.length > 0) {
+      const s = pres.addSlide();
+      addSlideHeader(s, 'Маркетинговый контекст', null);
+
+      const types = ['сезонность','повод','событие','лонч'];
+      const typeLabels = { сезонность:'Сезонность', повод:'Поводы', событие:'События', лонч:'Лончи' };
+      const typeColors = { сезонность:'DBEAFE', повод:'FEF3C7', событие:'EDE9FE', лонч:'D1FAE5' };
+      const typeDotC   = { сезонность:'3B82F6', повод:'F59E0B', событие:'7C3AED', лонч:'059669' };
+
+      let curY = 1.6;
+      types.forEach(tp => {
+        const items = ctxInRange.filter(c => c.type.toLowerCase() === tp).slice(0, 8);
+        if (!items.length) return;
+
+        s.addText(typeLabels[tp], {
+          x:0.45, y:curY, w:12, h:0.26,
+          fontSize:9, bold:true, color:CLR.muted, fontFace:FONT, charSpacing:1,
+          isTextBox:true,
+        });
+        curY += 0.28;
+
+        items.forEach(c => {
+          const dotC = typeDotC[tp];
+          s.addShape(pres.ShapeType.ellipse, {
+            x:0.45, y:curY+0.06, w:0.1, h:0.1,
+            fill:{color:dotC}, line:{color:dotC,width:0},
+          });
+          const period = fmtRange(c.dateStart, c.dateEnd);
+          s.addText(c.name + (period ? '  ' + period : ''), {
+            x:0.62, y:curY, w:12.2, h:0.24,
+            fontSize:9, color:CLR.text, fontFace:FONT,
+            isTextBox:true,
+          });
+          curY += 0.26;
+          if (curY > 6.9) return;
+        });
+        curY += 0.12;
+        if (curY > 6.9) return;
+      });
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  // SLIDE 7 — PRODUCT FOCUS
+  // ═══════════════════════════════════════════════════════════════
+  {
+    // Collect collections that have SKU data
+    const collWithSkus = [];
+    const collSet = [...new Set(flights.map(f=>f.collection).filter(Boolean))];
+    collSet.forEach(cs => {
+      const cFlights = flights.filter(f=>f.collection===cs);
+      const allSkus = [...new Set(
+        cFlights.flatMap(f=>[f.sku1,f.sku2,f.sku3]).filter(Boolean)
+      )];
+      const acts = activities.filter(a=>a.collection===cs && a.skuFinal);
+      const actSkus = [...new Set(acts.map(a=>a.skuFinal).filter(Boolean))];
+      const skus = [...new Set([...allSkus,...actSkus])];
+      const periods = cFlights.map(f=>fmtRange(f.dateStart,f.dateEnd)).filter(Boolean);
+      const minDate = cFlights.reduce((m,f)=>(!m||f.dateStart<m)?f.dateStart:m, null);
+      const maxDate = cFlights.reduce((m,f)=>(!m||f.dateEnd>m)?f.dateEnd:m, null);
+      if (skus.length > 0 || cFlights.length > 0) {
+        collWithSkus.push({ cs, name: collName(cs), skus, minDate, maxDate, count: cFlights.length });
+      }
+    });
+
+    if (collWithSkus.length > 0) {
+      const s = pres.addSlide();
+      addSlideHeader(s, 'Продуктовый фокус', 'Продукты, получающие рекламную поддержку');
+
+      const CARD_W = 3.8;
+      const CARD_H = 2.2;
+      const COLS   = 3;
+      const START_Y = 1.6;
+      const START_X = 0.45;
+      const GAP     = 0.22;
+
+      collWithSkus.slice(0,9).forEach((item, i) => {
+        const col = i % COLS;
+        const row = Math.floor(i / COLS);
+        const cx = START_X + col * (CARD_W + GAP);
+        const cy = START_Y + row * (CARD_H + GAP);
+        if (cy + CARD_H > 7.3) return;
+        const hex = collColor(item.cs);
+        const lightHex = lighten(hex, 0.9);
+
+        s.addShape(pres.ShapeType.roundRect, {
+          x:cx, y:cy, w:CARD_W, h:CARD_H,
+          fill:{color:lightHex}, line:{color:hex,width:0.6},
+          rectRadius:0.08,
+        });
+        s.addShape(pres.ShapeType.rect, {
+          x:cx, y:cy, w:CARD_W, h:0.14,
+          fill:{color:hex}, line:{color:hex,width:0},
+        });
+        s.addText(item.name, {
+          x:cx+0.12, y:cy+0.18, w:CARD_W-0.24, h:0.32,
+          fontSize:10, bold:true, color:CLR.text, fontFace:FONT,
+          isTextBox:true,
+        });
+        const pd = (item.minDate && item.maxDate) ? fmtRange(item.minDate, item.maxDate) : '';
+        if (pd) {
+          s.addText(pd, {
+            x:cx+0.12, y:cy+0.5, w:CARD_W-0.24, h:0.22,
+            fontSize:8, color:CLR.muted, fontFace:FONT,
+            isTextBox:true,
+          });
+        }
+        if (item.skus.length > 0) {
+          s.addText('ПРОДУКТЫ В ФОКУСЕ', {
+            x:cx+0.12, y:cy+0.76, w:CARD_W-0.24, h:0.18,
+            fontSize:6.5, bold:true, color:CLR.muted, fontFace:FONT, charSpacing:0.5,
+            isTextBox:true,
+          });
+          const skuStr = item.skus.slice(0,4).join('\n');
+          s.addText(skuStr, {
+            x:cx+0.12, y:cy+0.94, w:CARD_W-0.24, h:1.1,
+            fontSize:8, color:CLR.text, fontFace:FONT, lineSpacingMultiple:1.2,
+            isTextBox:true,
+          });
+        } else {
+          s.addText(`${item.count} кампани${item.count===1?'я':item.count<5?'и':'й'}`, {
+            x:cx+0.12, y:cy+0.76, w:CARD_W-0.24, h:0.3,
+            fontSize:9, color:CLR.muted, fontFace:FONT,
+            isTextBox:true,
+          });
+        }
+      });
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  // DETAIL SLIDES — only for flights with substantive data
+  // ═══════════════════════════════════════════════════════════════
+  const substantiveFlights = flights.filter(f => isSubstantive(f));
+  substantiveFlights.forEach(f => {
+    const fActs = activities.filter(a => norm(a.flightName) === norm(f.name));
+    const hex   = collColor(f.collection);
+    const lightHex = lighten(hex, 0.92);
+
+    const s = pres.addSlide();
+    s.background = { color: CLR.white };
+
+    // ── Top accent bar
+    s.addShape(pres.ShapeType.rect, {
+      x:0, y:0, w:13.33, h:0.1,
+      fill:{color:hex}, line:{color:hex,width:0},
+    });
+
+    // ── Collection + flight name
+    s.addText((collName(f.collection) || '').toUpperCase(), {
+      x:0.45, y:0.2, w:9, h:0.25,
+      fontSize:8, bold:true, color:hex, fontFace:FONT, charSpacing:2,
+      isTextBox:true,
+    });
+    s.addText(f.name, {
+      x:0.45, y:0.44, w:9, h:0.5,
+      fontSize:20, bold:true, color:CLR.text, fontFace:FONT,
+      isTextBox:true,
+    });
+
+    // ── Chips row (period, TA, status)
+    let chipX = 0.45;
+    const CHIP_Y  = 1.02;
+    const CHIP_H  = 0.28;
+    function addChip(label, value, bgHex) {
+      const txt = label ? label + ': ' + value : value;
+      const w = Math.max(txt.length * 0.073 + 0.2, 0.6);
+      s.addShape(pres.ShapeType.roundRect, {
+        x:chipX, y:CHIP_Y, w, h:CHIP_H,
+        fill:{color:bgHex||'F0F4FF'}, line:{color:'D1D8F5',width:0.4},
+        rectRadius:0.14,
+      });
+      s.addText(txt, {
+        x:chipX+0.1, y:CHIP_Y, w:w-0.2, h:CHIP_H,
+        fontSize:7.5, color:CLR.text, valign:'middle', fontFace:FONT,
+        isTextBox:true,
+      });
+      chipX += w + 0.1;
+    }
+
+    const period = fmtRange(f.dateStart, f.dateEnd);
+    if (period) addChip('', period, 'EBF0FD');
+    if (f.taFinal) addChip('ЦА', f.taFinal.slice(0,30), 'F5F3FF');
+    const dotC = statusDotColor(f.status);
+    // Status chip
+    const stLbl = f.status ? f.status.charAt(0).toUpperCase()+f.status.slice(1) : 'План';
+    addChip('', stLbl, lighten(dotC, 0.88));
+
+    // Claim
+    if (f.claimFinal) {
+      s.addText(f.claimFinal.slice(0,120), {
+        x:0.45, y:1.38, w:8.8, h:0.4,
+        fontSize:10, color:CLR.muted, fontFace:FONT, italic:true,
+        isTextBox:true,
+      });
+    }
+
+    s.addShape(pres.ShapeType.line, {
+      x:0.45, y:1.85, w:12.43, h:0,
+      line:{color:CLR.border,width:0.6},
+    });
+
+    // ── Products block
+    const skus = [f.sku1,f.sku2,f.sku3].filter(Boolean);
+    if (skus.length > 0) {
+      s.addText('ПРОДУКТЫ В ФОКУСЕ ПРОДВИЖЕНИЯ', {
+        x:0.45, y:1.95, w:8, h:0.24,
+        fontSize:7, bold:true, color:CLR.muted, fontFace:FONT, charSpacing:1,
+        isTextBox:true,
+      });
+      s.addText(skus.join('\n'), {
+        x:0.45, y:2.2, w:3.8, h:0.8,
+        fontSize:9, color:CLR.text, fontFace:FONT, lineSpacingMultiple:1.3,
+        isTextBox:true,
+      });
+    }
+
+    // ── Activities section header
+    const actsY = skus.length > 0 ? 3.1 : 2.0;
+    if (fActs.length > 0) {
+      s.addText('РЕКЛАМНАЯ ПОДДЕРЖКА', {
+        x:0.45, y:actsY, w:12, h:0.26,
+        fontSize:7, bold:true, color:CLR.muted, fontFace:FONT, charSpacing:1,
+        isTextBox:true,
+      });
+
+      // Channel cards
+      const dirs = [...new Set(fActs.map(a=>a.direction).filter(Boolean))];
+      const CARD_W = 1.85;
+      const CARD_H = 1.25;
+      const GAP    = 0.15;
+      const maxCards = 6;
+      dirs.slice(0, maxCards).forEach((dir, di) => {
+        const cx = 0.45 + di * (CARD_W + GAP);
+        const cy = actsY + 0.34;
+        if (cx + CARD_W > 13) return;
+        const dirActs = fActs.filter(a=>a.direction===dir);
+        const platforms = [...new Set(dirActs.map(a=>a.platforms).filter(Boolean))].join(', ');
+        const formats   = [...new Set(dirActs.map(a=>a.format).filter(Boolean))].join(', ');
+
+        s.addShape(pres.ShapeType.roundRect, {
+          x:cx, y:cy, w:CARD_W, h:CARD_H,
+          fill:{color:'F7F8FA'}, line:{color:CLR.border,width:0.6},
+          rectRadius:0.07,
+        });
+        s.addShape(pres.ShapeType.rect, {
+          x:cx, y:cy, w:CARD_W, h:0.1,
+          fill:{color:hex}, line:{color:hex,width:0},
+        });
+        s.addText(dir, {
+          x:cx+0.1, y:cy+0.14, w:CARD_W-0.2, h:0.26,
+          fontSize:9, bold:true, color:CLR.text, fontFace:FONT,
+          isTextBox:true,
+        });
+        if (platforms) {
+          s.addText(platforms.slice(0,40), {
+            x:cx+0.1, y:cy+0.4, w:CARD_W-0.2, h:0.3,
+            fontSize:7.5, color:CLR.muted, fontFace:FONT,
+            isTextBox:true,
+          });
+        }
+        if (formats) {
+          s.addText(formats.slice(0,40), {
+            x:cx+0.1, y:cy+0.7, w:CARD_W-0.2, h:0.3,
+            fontSize:7.5, color:CLR.muted, fontFace:FONT,
+            isTextBox:true,
+          });
+        }
+        if (dirActs[0] && dirActs[0].dateStart) {
+          const actPeriod = fmtRange(dirActs[0].dateStart, dirActs[0].dateEnd);
+          s.addText(actPeriod, {
+            x:cx+0.1, y:cy+1.0, w:CARD_W-0.2, h:0.2,
+            fontSize:7, color:CLR.muted, fontFace:FONT,
+            isTextBox:true,
+          });
+        }
+      });
+    }
+
+    // ── Brief / comment at bottom
+    const note = f.brief || f.comment;
+    if (note) {
+      s.addShape(pres.ShapeType.line, {
+        x:0.45, y:6.7, w:12.43, h:0,
+        line:{color:CLR.border,width:0.6},
+      });
+      s.addText(note.slice(0,180), {
+        x:0.45, y:6.78, w:12.43, h:0.5,
+        fontSize:8, color:CLR.muted, fontFace:FONT, italic:true,
+        isTextBox:true,
+      });
+    }
+  });
 
   // ── Save ───────────────────────────────────────────────────────
   const btn = document.getElementById('exportDoBtn');
