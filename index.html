@@ -3226,22 +3226,24 @@ function _buildPptx(data) {
     r = Math.round(r + (255-r)*pct); g = Math.round(g + (255-g)*pct); b = Math.round(b + (255-b)*pct);
     return [r,g,b].map(v=>v.toString(16).padStart(2,'0')).join('');
   }
-  // Check if flight has substantive detail (2+ meaningful fields)
+  // Detail slide only if flight has real advertising activities with content.
+  // Rule: >=2 activities OR (1 activity + 2+ rich fields on that activity).
   function isSubstantive(f) {
     const fActs = activities.filter(a => norm(a.flightName) === norm(f.name));
-    let score = 0;
-    if (f.taFinal) score++;
-    if (f.claimFinal) score++;
-    if (f.sku1 || f.sku2 || f.sku3) score++;
-    if (f.brief) score++;
-    if (fActs.length > 0) score++;
-    const platforms = fActs.filter(a => a.platforms).length;
-    if (platforms > 0) score++;
-    const formats = fActs.filter(a => a.format).length;
-    if (formats > 0) score++;
-    if (f.comment) score++;
-    if (f.specDocUrl || f.materialsUrl) score++;
-    return score >= 2;
+    if (fActs.length >= 2) return true;
+    if (fActs.length === 1) {
+      const a = fActs[0];
+      let richScore = 0;
+      if (a.platforms)  richScore++;
+      if (a.format)     richScore++;
+      if (a.specDocUrl) richScore++;
+      if (a.materialsUrl) richScore++;
+      if (a.skuFinal)   richScore++;
+      if (a.taFinal)    richScore++;
+      if (a.claimFinal) richScore++;
+      return richScore >= 2;
+    }
+    return false; // 0 activities → no detail slide
   }
 
   const pres = new PptxGenJS();
@@ -3484,83 +3486,114 @@ function _buildPptx(data) {
     const s = pres.addSlide();
     addSlideHeader(s, 'Приоритеты рекламной поддержки', null);
 
-    // Group flights by activity count → proxy for priority
-    const scored = flights.map(f => {
-      const fActs = activities.filter(a => norm(a.flightName) === norm(f.name));
-      return { f, score: fActs.length };
+    // Group by collection (deduplicate), score by activity count
+    const collSlugs = [...new Set(flights.map(f=>f.collection).filter(Boolean))];
+    const collScored = collSlugs.map(cs => {
+      const cFlights = flights.filter(f=>f.collection===cs);
+      const actCount = cFlights.reduce((sum,f) => {
+        return sum + activities.filter(a=>norm(a.flightName)===norm(f.name)).length;
+      }, 0);
+      const minDate = cFlights.reduce((m,f)=>(!m||f.dateStart<m)?f.dateStart:m, null);
+      const maxDate = cFlights.reduce((m,f)=>(!m||f.dateEnd>m)?f.dateEnd:m, null);
+      const skus = [...new Set(cFlights.flatMap(f=>[f.sku1,f.sku2,f.sku3]).filter(Boolean))];
+      return { cs, name: collName(cs), actCount, minDate, maxDate, skus, flights: cFlights };
     });
-    scored.sort((a,b) => b.score - a.score);
+    collScored.sort((a,b)=>b.actCount-a.actCount);
 
-    // Bucket into tiers
-    const tiers = [
-      { label:'Максимальный',   items: scored.filter(x=>x.score>=4) },
-      { label:'Высокий',        items: scored.filter(x=>x.score>=2 && x.score<4) },
-      { label:'Поддержка',      items: scored.filter(x=>x.score===1) },
-      { label:'Тест / Обзор',   items: scored.filter(x=>x.score===0) },
+    // 5-tier system
+    const TIERS = [
+      { label:'Максимум',             check: x=>x.actCount>=5 },
+      { label:'Максимальный сезонный',check: x=>x.actCount>=3 && x.actCount<5 },
+      { label:'Высокий',              check: x=>x.actCount>=1 && x.actCount<3 },
+      { label:'Поддержка',            check: x=>x.actCount===0 && x.flights.length>=2 },
+      { label:'Тест',                 check: x=>x.actCount===0 && x.flights.length<2 },
     ];
+    const buckets = TIERS.map(t=>({ ...t, items: collScored.filter(t.check) }));
+    const filledBuckets = buckets.filter(b=>b.items.length>0);
 
-    const TIER_X = [0.45, 3.6, 6.75, 9.9];
-    const TIER_W = 2.9;
+    // Render: up to 5 columns, each bucket gets a column
+    // If total cards > 20 → split into 2 slides
+    const totalCards = collScored.length;
+    const COLS = Math.min(filledBuckets.length, 5);
+    const TIER_W = (12.43) / COLS - 0.15;
     const CONTENT_Y = 1.55;
+    const CARD_H = 0.95;
+    const CARD_GAP = 0.12;
+    const MAX_ROWS_PER_SLIDE = Math.floor((7.2 - CONTENT_Y - 0.4) / (CARD_H + CARD_GAP));
 
-    tiers.forEach((tier, ti) => {
-      if (!tier.items.length) return;
-      const x = TIER_X[ti];
+    // Helper to render one priorities slide
+    function renderPrioritiesSlide(slideRef, bucketsToRender, startRows) {
+      bucketsToRender.forEach((bucket, bi) => {
+        if (!bucket.items.length) return;
+        const x = 0.45 + bi * (TIER_W + 0.15);
 
-      // Tier header
-      s.addShape(pres.ShapeType.roundRect, {
-        x, y:CONTENT_Y, w:TIER_W, h:0.3,
-        fill:{color:'EBF0FD'}, line:{color:'C7D7F7',width:0.5},
-        rectRadius:0.04,
-      });
-      s.addText(tier.label, {
-        x, y:CONTENT_Y, w:TIER_W, h:0.3,
-        fontSize:8, bold:true, color:'3B6FE8', align:'center', valign:'middle', fontFace:FONT,
-        isTextBox:true,
-      });
-
-      // Cards for each flight
-      tier.items.forEach((item, ci) => {
-        const f = item.f;
-        const cy = CONTENT_Y + 0.38 + ci * 1.1;
-        if (cy + 1.0 > 7.3) return; // overflow protection
-        const hex = collColor(f.collection);
-        const lightHex = lighten(hex, 0.88);
-
-        s.addShape(pres.ShapeType.roundRect, {
-          x, y:cy, w:TIER_W, h:1.0,
-          fill:{color:lightHex}, line:{color:hex,width:0.6},
-          rectRadius:0.06,
-        });
-        // Accent top strip
-        s.addShape(pres.ShapeType.roundRect, {
-          x, y:cy, w:TIER_W, h:0.12,
-          fill:{color:hex}, line:{color:hex,width:0},
+        // Tier header pill
+        slideRef.addShape(pres.ShapeType.roundRect, {
+          x, y:CONTENT_Y, w:TIER_W, h:0.28,
+          fill:{color:'EBF0FD'}, line:{color:'C7D7F7',width:0.5},
           rectRadius:0.04,
         });
-        const cName = collName(f.collection) || f.name;
-        s.addText(cName.slice(0,28), {
-          x:x+0.1, y:cy+0.16, w:TIER_W-0.2, h:0.26,
-          fontSize:9, bold:true, color:CLR.text, fontFace:FONT,
+        slideRef.addText(bucket.label, {
+          x, y:CONTENT_Y, w:TIER_W, h:0.28,
+          fontSize:7.5, bold:true, color:'3B6FE8', align:'center', valign:'middle', fontFace:FONT,
           isTextBox:true,
         });
-        const period = fmtRange(f.dateStart, f.dateEnd);
-        s.addText(period, {
-          x:x+0.1, y:cy+0.42, w:TIER_W-0.2, h:0.2,
-          fontSize:8, color:CLR.muted, fontFace:FONT,
-          isTextBox:true,
-        });
-        // SKU line
-        const skus = [f.sku1,f.sku2,f.sku3].filter(Boolean).join(', ');
-        if (skus) {
-          s.addText(skus.slice(0,40), {
-            x:x+0.1, y:cy+0.62, w:TIER_W-0.2, h:0.22,
-            fontSize:7, color:CLR.muted, fontFace:FONT,
+
+        const rowStart = startRows[bi] || 0;
+        const rowsLeft = MAX_ROWS_PER_SLIDE;
+        bucket.items.slice(rowStart, rowStart + rowsLeft).forEach((item, ci) => {
+          const cy = CONTENT_Y + 0.36 + ci * (CARD_H + CARD_GAP);
+          if (cy + CARD_H > 7.25) return;
+          const hex = collColor(item.cs);
+          const lightHex = lighten(hex, 0.9);
+
+          slideRef.addShape(pres.ShapeType.roundRect, {
+            x, y:cy, w:TIER_W, h:CARD_H,
+            fill:{color:lightHex}, line:{color:hex,width:0.6},
+            rectRadius:0.06,
+          });
+          slideRef.addShape(pres.ShapeType.rect, {
+            x, y:cy, w:TIER_W, h:0.1,
+            fill:{color:hex}, line:{color:hex,width:0},
+          });
+          slideRef.addText((item.name||item.cs).slice(0,24), {
+            x:x+0.1, y:cy+0.14, w:TIER_W-0.2, h:0.26,
+            fontSize:8.5, bold:true, color:CLR.text, fontFace:FONT,
             isTextBox:true,
           });
-        }
+          const period = (item.minDate && item.maxDate) ? fmtRange(item.minDate, item.maxDate) : '';
+          if (period) {
+            slideRef.addText(period, {
+              x:x+0.1, y:cy+0.4, w:TIER_W-0.2, h:0.2,
+              fontSize:7.5, color:CLR.muted, fontFace:FONT,
+              isTextBox:true,
+            });
+          }
+          if (item.skus.length > 0) {
+            slideRef.addText(item.skus.slice(0,2).join(', ').slice(0,35), {
+              x:x+0.1, y:cy+0.6, w:TIER_W-0.2, h:0.22,
+              fontSize:7, color:CLR.muted, fontFace:FONT,
+              isTextBox:true,
+            });
+          }
+        });
       });
-    });
+    }
+
+    // Check if 2 slides needed
+    const maxItemsInBucket = Math.max(...filledBuckets.map(b=>b.items.length));
+    if (maxItemsInBucket > MAX_ROWS_PER_SLIDE) {
+      // First slide — rows 0..MAX_ROWS_PER_SLIDE-1
+      const startRows1 = filledBuckets.map(()=>0);
+      renderPrioritiesSlide(s, filledBuckets, startRows1);
+      // Second slide
+      const s2 = pres.addSlide();
+      addSlideHeader(s2, 'Приоритеты рекламной поддержки (продолжение)', null);
+      const startRows2 = filledBuckets.map(()=>MAX_ROWS_PER_SLIDE);
+      renderPrioritiesSlide(s2, filledBuckets, startRows2);
+    } else {
+      renderPrioritiesSlide(s, filledBuckets, filledBuckets.map(()=>0));
+    }
   }
 
   // ── Campaign cards helper ────────────────────────────────────
@@ -3587,9 +3620,9 @@ function _buildPptx(data) {
       const priority = score >= 4 ? 'Максимальный'
                      : score >= 2 ? 'Высокий'
                      : score === 1 ? 'Поддержка'
-                     : 'Обзор';
+                     : null; // no badge for 0-activity flights
       const priColors = {
-        'Максимальный':'3B6FE8','Высокий':'059669','Поддержка':'F59E0B','Обзор':CLR.gray
+        'Максимальный':'3B6FE8','Высокий':'059669','Поддержка':'F59E0B'
       };
       const priHex = priColors[priority] || CLR.gray;
 
@@ -3634,19 +3667,21 @@ function _buildPptx(data) {
         });
       }
 
-      // Priority badge (bottom-right)
-      const badgeW = 1.1;
-      const badgeX = cx + CARD_W - badgeW - 0.1;
-      s.addShape(pres.ShapeType.roundRect, {
-        x:badgeX, y:cy+CARD_H-0.3, w:badgeW, h:0.22,
-        fill:{color:lighten(priHex, 0.88)}, line:{color:priHex,width:0.4},
-        rectRadius:0.11,
-      });
-      s.addText(priority, {
-        x:badgeX, y:cy+CARD_H-0.3, w:badgeW, h:0.22,
-        fontSize:6.5, color:priHex, align:'center', valign:'middle', fontFace:FONT,
-        isTextBox:true,
-      });
+      // Priority badge (bottom-right) — only when there are activities
+      if (priority) {
+        const badgeW = 1.1;
+        const badgeX = cx + CARD_W - badgeW - 0.1;
+        s.addShape(pres.ShapeType.roundRect, {
+          x:badgeX, y:cy+CARD_H-0.3, w:badgeW, h:0.22,
+          fill:{color:lighten(priHex, 0.88)}, line:{color:priHex,width:0.4},
+          rectRadius:0.11,
+        });
+        s.addText(priority, {
+          x:badgeX, y:cy+CARD_H-0.3, w:badgeW, h:0.22,
+          fontSize:6.5, color:priHex, align:'center', valign:'middle', fontFace:FONT,
+          isTextBox:true,
+        });
+      }
 
       // Status dot (top-right corner)
       const dotC = statusDotColor(f.status);
@@ -3810,22 +3845,28 @@ function _buildPptx(data) {
             isTextBox:true,
           });
         }
+        // Show focus products (SKUs) — from flights and activity data
+        const focusLabel = item.skus.length > 0 ? 'ПРОДУКТЫ В ФОКУСЕ' : 'ПЕРИОД ПОДДЕРЖКИ';
+        s.addText(focusLabel, {
+          x:cx+0.12, y:cy+0.76, w:CARD_W-0.24, h:0.18,
+          fontSize:6.5, bold:true, color:CLR.muted, fontFace:FONT, charSpacing:0.5,
+          isTextBox:true,
+        });
         if (item.skus.length > 0) {
-          s.addText('ПРОДУКТЫ В ФОКУСЕ', {
-            x:cx+0.12, y:cy+0.76, w:CARD_W-0.24, h:0.18,
-            fontSize:6.5, bold:true, color:CLR.muted, fontFace:FONT, charSpacing:0.5,
-            isTextBox:true,
-          });
           const skuStr = item.skus.slice(0,4).join('\n');
           s.addText(skuStr, {
             x:cx+0.12, y:cy+0.94, w:CARD_W-0.24, h:1.1,
-            fontSize:8, color:CLR.text, fontFace:FONT, lineSpacingMultiple:1.2,
+            fontSize:8, color:CLR.text, fontFace:FONT, lineSpacingMultiple:1.3,
             isTextBox:true,
           });
         } else {
-          s.addText(`${item.count} кампани${item.count===1?'я':item.count<5?'и':'й'}`, {
-            x:cx+0.12, y:cy+0.76, w:CARD_W-0.24, h:0.3,
-            fontSize:9, color:CLR.muted, fontFace:FONT,
+          // No SKUs known yet — show the support period prominently
+          const cFlightsRef = flights.filter(f=>norm(f.collection)===norm(item.cs)||f.collection===item.cs);
+          const periodLines = cFlightsRef.slice(0,3).map(f=>fmtRange(f.dateStart,f.dateEnd)).filter(Boolean);
+          const periodText = periodLines.length > 0 ? periodLines.join('\n') : 'Уточняется';
+          s.addText(periodText, {
+            x:cx+0.12, y:cy+0.94, w:CARD_W-0.24, h:1.1,
+            fontSize:8, color:CLR.text, fontFace:FONT, lineSpacingMultiple:1.3,
             isTextBox:true,
           });
         }
