@@ -3176,15 +3176,11 @@ function updateExportPreview() {
 function doExportPptx() {
   const preview = document.getElementById('exportPreview');
   const data = preview._exportData;
+  preview.innerHTML = '<span style="color:#888">Запуск экспорта… PptxGenJS=' + (typeof PptxGenJS) + '</span>';
   if (!data || !data.flights.length) {
-    const p = document.getElementById('exportPreview');
-    p.innerHTML = '<span style="color:#e74c3c;font-weight:600">Нет данных для экспорта за выбранный период.</span>';
+    preview.innerHTML = '<span style="color:#e74c3c;font-weight:600">Нет данных для экспорта за выбранный период.</span>';
     return;
   }
-
-  // Build a simple placeholder PPTX stub using PptxGenJS loaded dynamically
-  // Since PptxGenJS is not yet included, we generate a structured JSON summary
-  // and prompt user — full PPTX generation requires pptxgenjs CDN script
   _generatePptx(data);
 }
 
