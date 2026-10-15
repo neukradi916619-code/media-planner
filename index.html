@@ -1769,7 +1769,28 @@ function barWidth(s, e) {
   return Math.max(w, 4);
 }
 
-// Clipped bar helpers — clip item dates to visible period boundaries
+// ── PERCENTAGE-BASED positioning helpers ──────────────────────────
+// Returns raw % number (0–100) for left position
+function pctLeftVal(itemStart) {
+  const clampedStart = itemStart < viewStart ? viewStart : itemStart;
+  const pct = (clampedStart - viewStart) / (viewEnd - viewStart) * 100;
+  return Math.max(0, Math.min(100, pct));
+}
+// Returns raw % number for width
+function pctWidthVal(itemStart, itemEnd) {
+  if (!itemStart || !itemEnd) return 0;
+  const clampedStart = itemStart < viewStart ? viewStart : itemStart;
+  const clampedEnd   = itemEnd   > viewEnd   ? viewEnd   : itemEnd;
+  if (clampedStart > clampedEnd) return 0;
+  const pct = (clampedEnd - clampedStart) / (viewEnd - viewStart) * 100;
+  return Math.max(pct, 0.1);
+}
+// Returns CSS % string
+function pctLeft(itemStart) { return pctLeftVal(itemStart) + '%'; }
+function pctWidth(itemStart, itemEnd) { return pctWidthVal(itemStart, itemEnd) + '%'; }
+
+// ── PIXEL helpers for lane collision detection ─────────────────────
+// These use DAY_PX to get pixel coordinates (relative to timeline container)
 function clippedBarLeft(itemStart) {
   const clampedStart = itemStart < viewStart ? viewStart : itemStart;
   return Math.max(0, dayOffset(clampedStart) * DAY_PX);
@@ -1989,12 +2010,9 @@ function renderGantt() {
   const container = document.getElementById('ganttContainer');
   container.innerHTML = '';
 
-  // Timeline width fills 100% of available space
-  const timelineW = Math.round(totalDays * DAY_PX);
-
   container.style.display = 'grid';
-  container.style.gridTemplateColumns = `${LEFT_COL_W}px ${timelineW}px`;
-  container.style.minWidth = `${LEFT_COL_W + timelineW}px`;
+  container.style.gridTemplateColumns = `${LEFT_COL_W}px 1fr`;
+  container.style.minWidth = `${LEFT_COL_W + 400}px`;
 
   // Header row
   renderHeader(container);
@@ -2037,16 +2055,12 @@ function renderHeader(container) {
   lh.textContent = 'Флайт / Активность';
   container.appendChild(lh);
 
-  const timelineW = Math.round(totalDays * DAY_PX);
-
   // Timeline header
   const th = document.createElement('div');
   th.className = 'timeline-header';
-  th.style.width = timelineW + 'px';
 
   const mr = document.createElement('div');
   mr.className = 'months-row';
-  mr.style.width = timelineW + 'px';
   mr.style.position = 'relative';
 
   if (currentScale === 'month') {
@@ -2054,7 +2068,7 @@ function renderHeader(container) {
     const monthName = viewStart.toLocaleDateString('ru-RU', { month:'long', year:'numeric' });
     const mc = document.createElement('div');
     mc.className = 'month-cell today-month';
-    mc.style.cssText = `position:absolute;left:0;width:${timelineW}px;`;
+    mc.style.cssText = `position:absolute;left:0;right:0;`;
 
     const ml = document.createElement('div');
     ml.className = 'month-label';
@@ -2068,13 +2082,13 @@ function renderHeader(container) {
     for (const dayNum of weekStarts) {
       const tickDate = new Date(viewStart.getFullYear(), viewStart.getMonth(), dayNum);
       if (tickDate > viewEnd) break;
-      const xPx = dayOffset(tickDate) * DAY_PX;
+      const xPct = pctLeftVal(tickDate);
       const tick = document.createElement('div');
-      tick.style.cssText = `position:absolute;bottom:0;left:${xPx}px;height:8px;width:1px;background:var(--border);`;
+      tick.style.cssText = `position:absolute;bottom:0;left:${xPct}%;height:8px;width:1px;background:var(--border);`;
       mr.appendChild(tick);
 
       const tickLabel = document.createElement('div');
-      tickLabel.style.cssText = `position:absolute;bottom:9px;left:${xPx + 2}px;font-size:10px;color:var(--text-muted);white-space:nowrap;`;
+      tickLabel.style.cssText = `position:absolute;bottom:9px;left:calc(${xPct}% + 2px);font-size:10px;color:var(--text-muted);white-space:nowrap;`;
       tickLabel.textContent = dayNum;
       mr.appendChild(tickLabel);
     }
@@ -2086,15 +2100,15 @@ function renderHeader(container) {
       const clampedStart = cur < viewStart ? viewStart : cur;
       const clampedEnd   = monthEnd > viewEnd ? viewEnd : monthEnd;
 
-      const left  = dayOffset(clampedStart) * DAY_PX;
-      const width = (dayOffset(clampedEnd) - dayOffset(clampedStart) + 1) * DAY_PX;
+      const left  = pctLeftVal(clampedStart);
+      const width = pctWidthVal(clampedStart, clampedEnd);
 
       const mc = document.createElement('div');
       mc.className = 'month-cell';
       if (cur.getMonth() === TODAY.getMonth() && cur.getFullYear() === TODAY.getFullYear()) {
         mc.classList.add('today-month');
       }
-      mc.style.cssText = `position:absolute;left:${left}px;width:${width}px;`;
+      mc.style.cssText = `position:absolute;left:${left}%;width:${width}%;`;
 
       const ml = document.createElement('div');
       ml.className = 'month-label';
@@ -2115,10 +2129,10 @@ function renderHeader(container) {
   }
 
   // Today line in header
-  const todayOff = dayOffset(TODAY);
-  if (todayOff >= 0 && todayOff < totalDays) {
+  if (TODAY >= viewStart && TODAY <= viewEnd) {
+    const tPct = pctLeftVal(TODAY);
     const tline = document.createElement('div');
-    tline.style.cssText = `position:absolute;top:0;bottom:0;left:${todayOff*DAY_PX}px;width:2px;background:#EF4444;z-index:20;pointer-events:none;`;
+    tline.style.cssText = `position:absolute;top:0;bottom:0;left:${tPct}%;width:2px;background:#EF4444;z-index:20;pointer-events:none;`;
     mr.appendChild(tline);
   }
 
@@ -2128,15 +2142,22 @@ function renderHeader(container) {
 
 // ── CONTEXT BLOCK REDESIGN ────────────────────────────────────────
 
-// Helpers for placing elements on the timeline with lane-stacking
-function ctxBarLeft(d) { return clippedBarLeft(d); }
-function ctxBarWidth(ds, de) { return Math.max(8, clippedBarWidth(ds, de)); }
+// Helpers for placing elements on the timeline
+// Pixel versions (for lane collision detection)
+function ctxBarLeftPx(d) { return clippedBarLeft(d); }
+function ctxBarWidthPx(ds, de) { return Math.max(8, clippedBarWidth(ds, de)); }
+// % versions for CSS placement (strings)
+function ctxBarLeft(d) { return pctLeftVal(d); }   // returns number (%)
+function ctxBarWidth(ds, de) { return pctWidthVal(ds, de); } // returns number (%)
+// For legacy callers expecting px value (lane detection etc.)
+function ctxBarLeftForLane(d) { return ctxBarLeftPx(d); }
+function ctxBarWidthForLane(ds, de) { return ctxBarWidthPx(ds, de); }
 
 function addTodayLine(tc) {
-  const todayOff = dayOffset(TODAY);
-  if (todayOff >= 0 && todayOff <= totalDays) {
+  if (TODAY >= viewStart && TODAY <= viewEnd) {
+    const tPct = pctLeftVal(TODAY);
     const tl = document.createElement('div');
-    tl.style.cssText = `position:absolute;top:0;bottom:0;left:${todayOff*DAY_PX}px;width:2px;background:#EF4444;opacity:.35;z-index:1;pointer-events:none;`;
+    tl.style.cssText = `position:absolute;top:0;bottom:0;left:${tPct}%;width:2px;background:#EF4444;opacity:.35;z-index:1;pointer-events:none;`;
     tc.appendChild(tl);
   }
 }
@@ -2177,7 +2198,6 @@ function renderContextRow(container) {
 
   const headerTimeline = document.createElement('div');
   headerTimeline.className = 'ctx-header-timeline';
-  headerTimeline.style.width = `${totalDays * DAY_PX}px`;
   addTodayLine(headerTimeline);
   container.appendChild(headerTimeline);
 
@@ -2193,7 +2213,6 @@ function renderContextRow(container) {
 
     const tc = document.createElement('div');
     tc.className = 'ctx-subrow-timeline';
-    tc.style.width = `${totalDays * DAY_PX}px`;
     container.appendChild(tc);
 
     if (!expanded) {
@@ -2261,26 +2280,26 @@ function renderContextRow(container) {
   const LVL_B_Y  = LVL_A_Y + 11; // level B top
   const MAX_LABEL_W = 100;        // px max label width
   const LABEL_GAP   = 4;          // px between labels on same level
-  const CLUSTER_GAP = SCALE_CONFIG[currentScale].clusterDays * DAY_PX; // dynamic per scale
+  const CLUSTER_GAP = SCALE_CONFIG[currentScale].clusterDays * DAY_PX; // dynamic per scale, in px
 
   // ── Cluster single-day поводы that are within CLUSTER_GAP px ──────
   const singleItems = povodItems.filter(c => Math.round((c.dateEnd - c.dateStart) / 86400000) <= 1);
   const multiItems  = povodItems.filter(c => Math.round((c.dateEnd - c.dateStart) / 86400000) > 1);
 
-  // Group singles into clusters
+  // Group singles into clusters (use pixel positions for clustering threshold)
   const clusters = [];
   for (const ctx of singleItems) {
-    const x = ctxBarLeft(ctx.dateStart);
+    const xPx = ctxBarLeftPx(ctx.dateStart); // px for clustering comparison
     const last = clusters[clusters.length - 1];
-    if (last && x - last.xEnd <= CLUSTER_GAP) {
+    if (last && xPx - last.xEnd <= CLUSTER_GAP) {
       last.items.push(ctx);
-      last.xEnd = x;
+      last.xEnd = xPx;
     } else {
-      clusters.push({ items: [ctx], xStart: x, xEnd: x });
+      clusters.push({ items: [ctx], xStart: xPx, xEnd: xPx });
     }
   }
 
-  // occupied[level] = array of {left, right} already placed
+  // occupied[level] = array of {left, right} already placed — in PIXELS for collision
   const occupied = { A: [], B: [] };
 
   function fits(level, left, right) {
@@ -2296,15 +2315,15 @@ function renderContextRow(container) {
   // ── Render clusters ───────────────────────────────────────────────
   for (const cluster of clusters) {
     const { items, xStart } = cluster;
-    const xCenter = xStart + (cluster.xEnd - xStart) / 2;
 
     if (items.length === 1) {
       // Single dot
       const ctx = items[0];
-      const xPx = ctxBarLeft(ctx.dateStart);
+      const xPx = ctxBarLeftPx(ctx.dateStart);   // px for collision
+      const xPct = ctxBarLeft(ctx.dateStart);     // % for CSS
       const dot = document.createElement('div');
       dot.className = 'ctx-povod-dot';
-      dot.style.left = xPx + 'px';
+      dot.style.left = xPct + '%';
       dot.style.top = DOT_Y + 'px';
       addCtxPopup(dot, ctx);
       tcP.appendChild(dot);
@@ -2313,7 +2332,6 @@ function renderContextRow(container) {
       const fullLabel = povodDisplayLabel(ctx.name);
       const shortLabel = fullLabel.length > 8 ? fullLabel.slice(0, 7) + '…' : fullLabel;
       const prob = SCALE_CONFIG[currentScale].showLabelProb;
-      // year=sparse: try only shortLabel; month=all: try full first; quarter=normal: full then short
       const attempts = prob === 'sparse'
         ? [shortLabel, null]
         : prob === 'all'
@@ -2330,7 +2348,7 @@ function renderContextRow(container) {
           const lbl = document.createElement('div');
           lbl.className = 'ctx-povod-label';
           lbl.textContent = attempt;
-          lbl.style.left = lLeft + 'px';
+          lbl.style.left = xPct + '%';
           lbl.style.top = LVL_A_Y + 'px';
           lbl.style.maxWidth = MAX_LABEL_W + 'px';
           tcP.appendChild(lbl);
@@ -2340,35 +2358,31 @@ function renderContextRow(container) {
           const lbl = document.createElement('div');
           lbl.className = 'ctx-povod-label';
           lbl.textContent = attempt;
-          lbl.style.left = lLeft + 'px';
+          lbl.style.left = xPct + '%';
           lbl.style.top = LVL_B_Y + 'px';
           lbl.style.maxWidth = MAX_LABEL_W + 'px';
           tcP.appendChild(lbl);
           break;
         }
-        // else try shorter or skip
       }
     } else {
-      // Multiple dots in cluster → show first dot + "+N" badge
-      // Render individual dots
+      // Multiple dots in cluster → show all dots + "+N" badge
       for (const ctx of items) {
-        const xPx = ctxBarLeft(ctx.dateStart);
+        const xPct = ctxBarLeft(ctx.dateStart);
         const dot = document.createElement('div');
         dot.className = 'ctx-povod-dot';
-        dot.style.left = xPx + 'px';
+        dot.style.left = xPct + '%';
         dot.style.top = DOT_Y + 'px';
         addCtxPopup(dot, ctx);
         tcP.appendChild(dot);
       }
       // "+N" badge after last dot
-      const lastX = ctxBarLeft(items[items.length - 1].dateStart);
+      const lastPx = ctxBarLeftPx(items[items.length - 1].dateStart);
+      const lastPct = ctxBarLeft(items[items.length - 1].dateStart);
       const badgeLabel = '+' + items.length;
       const badgeW = measureText(badgeLabel) + 8;
-      const bLeft = lastX + 6;
+      const bLeft = lastPx + 6;
       const bRight = bLeft + badgeW;
-
-      // Build tooltip content for cluster
-      const clusterNames = items.map(c => povodDisplayLabel(c.name)).join('\n');
 
       for (const lvlY of [LVL_A_Y, LVL_B_Y]) {
         const lvl = lvlY === LVL_A_Y ? 'A' : 'B';
@@ -2377,7 +2391,7 @@ function renderContextRow(container) {
           const badge = document.createElement('div');
           badge.className = 'ctx-povod-label ctx-povod-cluster';
           badge.textContent = badgeLabel;
-          badge.style.left = bLeft + 'px';
+          badge.style.left = lastPct + '%';
           badge.style.top = lvlY + 'px';
           addTooltip(badge, items.map(c => `• ${povodDisplayLabel(c.name)}`).join('<br>'));
           tcP.appendChild(badge);
@@ -2389,13 +2403,15 @@ function renderContextRow(container) {
 
   // ── Render multi-day поводы ────────────────────────────────────────
   for (const ctx of multiItems) {
-    const xLeft = ctxBarLeft(ctx.dateStart);
-    const lineW = Math.max(4, ctxBarWidth(ctx.dateStart, ctx.dateEnd));
+    const xPx   = ctxBarLeftPx(ctx.dateStart);
+    const xPct  = ctxBarLeft(ctx.dateStart);
+    const lineWPx  = Math.max(4, ctxBarWidthPx(ctx.dateStart, ctx.dateEnd));
+    const lineWPct = Math.max(0.1, ctxBarWidth(ctx.dateStart, ctx.dateEnd));
 
     const line = document.createElement('div');
     line.className = 'ctx-povod-line';
-    line.style.left = xLeft + 'px';
-    line.style.width = lineW + 'px';
+    line.style.left = xPct + '%';
+    line.style.width = lineWPct + '%';
     line.style.top = DOT_Y + 'px';
     addCtxPopup(line, ctx);
     tcP.appendChild(line);
@@ -2403,7 +2419,7 @@ function renderContextRow(container) {
     // Label only if it fits (try over the line)
     const lbl = povodDisplayLabel(ctx.name);
     const lblW = Math.min(measureText(lbl) + 4, MAX_LABEL_W);
-    const lLeft = xLeft;
+    const lLeft = xPx;
     const lRight = lLeft + lblW;
     for (const lvl of ['A', 'B']) {
       const lvlY = lvl === 'A' ? LVL_A_Y : LVL_B_Y;
@@ -2412,13 +2428,12 @@ function renderContextRow(container) {
         const ll = document.createElement('div');
         ll.className = 'ctx-povod-line-label';
         ll.textContent = lbl;
-        ll.style.left = lLeft + 'px';
+        ll.style.left = xPct + '%';
         ll.style.top = lvlY + 'px';
         ll.style.maxWidth = MAX_LABEL_W + 'px';
         tcP.appendChild(ll);
         break;
       }
-      // If neither level fits — show line only, full name in tooltip
     }
   }
 
@@ -2434,8 +2449,8 @@ function renderContextRow(container) {
   const seasonItems = allContext.filter(c => c.type.toLowerCase() === 'сезонность');
   const seasonAssigned = assignLanes(
     seasonItems,
-    c => ctxBarLeft(c.dateStart),
-    c => ctxBarLeft(c.dateStart) + ctxBarWidth(c.dateStart, c.dateEnd),
+    c => ctxBarLeftPx(c.dateStart),
+    c => ctxBarLeftPx(c.dateStart) + ctxBarWidthPx(c.dateStart, c.dateEnd),
     2
   );
 
@@ -2444,8 +2459,8 @@ function renderContextRow(container) {
     maxSeasonLane = Math.max(maxSeasonLane, lane);
     const bar = document.createElement('div');
     bar.className = 'ctx-season-bar';
-    bar.style.left = ctxBarLeft(ctx.dateStart) + 'px';
-    bar.style.width = ctxBarWidth(ctx.dateStart, ctx.dateEnd) + 'px';
+    bar.style.left = ctxBarLeft(ctx.dateStart) + '%';
+    bar.style.width = ctxBarWidth(ctx.dateStart, ctx.dateEnd) + '%';
     bar.style.top = (4 + lane * 24) + 'px';
     bar.textContent = ctxShortLabel(ctx.name, ctx.type);
     addCtxPopup(bar, ctx);
@@ -2462,8 +2477,8 @@ function renderContextRow(container) {
   const eventItems = allContext.filter(c => c.type.toLowerCase() === 'событие');
   const eventAssigned = assignLanes(
     eventItems,
-    c => ctxBarLeft(c.dateStart),
-    c => ctxBarLeft(c.dateStart) + ctxBarWidth(c.dateStart, c.dateEnd),
+    c => ctxBarLeftPx(c.dateStart),
+    c => ctxBarLeftPx(c.dateStart) + ctxBarWidthPx(c.dateStart, c.dateEnd),
     2
   );
 
@@ -2472,8 +2487,8 @@ function renderContextRow(container) {
     maxEventLane = Math.max(maxEventLane, lane);
     const bar = document.createElement('div');
     bar.className = 'ctx-event-bar';
-    bar.style.left = ctxBarLeft(ctx.dateStart) + 'px';
-    bar.style.width = ctxBarWidth(ctx.dateStart, ctx.dateEnd) + 'px';
+    bar.style.left = ctxBarLeft(ctx.dateStart) + '%';
+    bar.style.width = ctxBarWidth(ctx.dateStart, ctx.dateEnd) + '%';
     bar.style.top = (4 + lane * 24) + 'px';
     bar.textContent = ctxShortLabel(ctx.name, ctx.type);
     addCtxPopup(bar, ctx);
@@ -2490,8 +2505,8 @@ function renderContextRow(container) {
   const launchItems = allContext.filter(c => c.type.toLowerCase() === 'лонч');
   const launchAssigned = assignLanes(
     launchItems,
-    c => ctxBarLeft(c.dateStart),
-    c => ctxBarLeft(c.dateStart) + ctxBarWidth(c.dateStart, c.dateEnd),
+    c => ctxBarLeftPx(c.dateStart),
+    c => ctxBarLeftPx(c.dateStart) + ctxBarWidthPx(c.dateStart, c.dateEnd),
     2
   );
 
@@ -2500,8 +2515,8 @@ function renderContextRow(container) {
     maxLaunchLane = Math.max(maxLaunchLane, lane);
     const bar = document.createElement('div');
     bar.className = 'ctx-launch-bar';
-    bar.style.left = ctxBarLeft(ctx.dateStart) + 'px';
-    bar.style.width = ctxBarWidth(ctx.dateStart, ctx.dateEnd) + 'px';
+    bar.style.left = ctxBarLeft(ctx.dateStart) + '%';
+    bar.style.width = ctxBarWidth(ctx.dateStart, ctx.dateEnd) + '%';
     bar.style.top = (4 + lane * 24) + 'px';
     bar.textContent = ctxShortLabel(ctx.name, ctx.type);
     addCtxPopup(bar, ctx);
@@ -2595,21 +2610,20 @@ function renderFlightRow(container, flight) {
   // Timeline cell
   const tc = document.createElement('div');
   tc.className = 'flight-timeline-cell';
-  tc.style.width = `${totalDays * DAY_PX}px`;
   tc.onclick = () => openFlightDrawer(flight);
 
   // Today line
-  const todayOff = dayOffset(TODAY);
-  if (todayOff >= 0 && todayOff <= totalDays) {
+  if (TODAY >= viewStart && TODAY <= viewEnd) {
+    const tPct = pctLeftVal(TODAY);
     const tl = document.createElement('div');
-    tl.style.cssText = `position:absolute;top:0;bottom:0;left:${todayOff*DAY_PX}px;width:2px;background:#EF4444;opacity:.35;z-index:1;pointer-events:none;`;
+    tl.style.cssText = `position:absolute;top:0;bottom:0;left:${tPct}%;width:2px;background:#EF4444;opacity:.35;z-index:1;pointer-events:none;`;
     tc.appendChild(tl);
   }
 
   const bar = document.createElement('div');
   bar.className = 'flight-bar ' + statusClass(flight.status);
-  bar.style.left = clippedBarLeft(flight.dateStart) + 'px';
-  bar.style.width = clippedBarWidth(flight.dateStart, flight.dateEnd) + 'px';
+  bar.style.left = pctLeft(flight.dateStart);
+  bar.style.width = pctWidth(flight.dateStart, flight.dateEnd);
   bar.style.background = color;
   bar.style.borderColor = shadeColor(color, -20);
 
@@ -2652,20 +2666,20 @@ function renderActivityRow(container, act, flight) {
 
   const tc = document.createElement('div');
   tc.className = 'activity-timeline-cell';
-  tc.style.width = `${totalDays * DAY_PX}px`;
 
-  const barW = clippedBarWidth(act.dateStart, act.dateEnd);
+  const barWPct = pctWidthVal(act.dateStart, act.dateEnd);
   const bar = document.createElement('div');
   bar.className = 'activity-bar';
-  bar.style.left = clippedBarLeft(act.dateStart) + 'px';
-  bar.style.width = barW + 'px';
+  bar.style.left = pctLeft(act.dateStart);
+  bar.style.width = barWPct + '%';
   bar.style.background = hexToRgba(color, .18);
   bar.style.borderColor = color;
   bar.style.color = color;
   bar.style.position = 'absolute';
-  // Inline label if bar is wide enough
+  // Inline label if bar is wide enough (use pixel width for threshold check)
+  const barWPx = clippedBarWidth(act.dateStart, act.dateEnd);
   const labelText = act.block || act.format || '';
-  if (labelText && barW >= 50) {
+  if (labelText && barWPx >= 50) {
     const lbl = document.createElement('div');
     lbl.className = 'activity-bar-label';
     lbl.textContent = labelText;
