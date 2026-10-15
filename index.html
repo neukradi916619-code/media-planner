@@ -533,6 +533,53 @@ body {
 }
 .ctx-event-bar:hover { opacity: .85; z-index: 10; }
 
+/* События — dot/line/label (new light pattern) */
+.ctx-event-dot {
+  position: absolute;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #7C3AED;
+  transform: translate(-50%, -50%);
+  cursor: pointer;
+  z-index: 5;
+  transition: transform .1s;
+}
+.ctx-event-dot:hover { transform: translate(-50%,-50%) scale(1.5); z-index: 12; }
+
+.ctx-event-line {
+  position: absolute;
+  height: 3px;
+  background: #7C3AED;
+  border-radius: 2px;
+  opacity: .55;
+  cursor: pointer;
+  z-index: 4;
+  transform: translateY(-50%);
+  transition: opacity .1s;
+}
+.ctx-event-line:hover { opacity: 1; z-index: 12; }
+
+.ctx-event-label {
+  position: absolute;
+  font-size: 8.5px;
+  font-weight: 500;
+  color: #4C1D95;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  background: rgba(237,233,254,.85);
+  border-radius: 3px;
+  padding: 1px 4px;
+  cursor: default;
+  z-index: 6;
+  pointer-events: none;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .ctx-event-label { color: #DDD6FE; background: rgba(76,29,149,.5); }
+}
+:root[data-theme="dark"] .ctx-event-label { color: #DDD6FE; background: rgba(76,29,149,.5); }
+
 /* Лончи — green */
 .ctx-launch-bar {
   position: absolute;
@@ -2099,14 +2146,14 @@ function addTodayLine(tc) {
 }
 
 // Place items in lanes to avoid overlap; return array of {item, lane}
-function assignLanes(items, getLeft, getRight, maxLanes=2) {
+function assignLanes(items, getLeft, getRight) {
   const laneEnds = []; // right edge of last item in each lane
   return items.map(item => {
     const left = getLeft(item);
     const right = getRight(item);
     let lane = 0;
-    while (lane < maxLanes && laneEnds[lane] !== undefined && laneEnds[lane] > left + 2) lane++;
-    if (lane >= maxLanes) lane = maxLanes - 1; // force into last lane if overflow
+    // Find first free lane; create a new one if all are occupied
+    while (laneEnds[lane] !== undefined && laneEnds[lane] > left + 2) lane++;
     laneEnds[lane] = right;
     return { item, lane };
   });
@@ -2117,42 +2164,10 @@ function renderContextRow(container) {
 
   // ── Shared helpers ───────────────────────────────────────────────
 
-  // Display-label dictionary (short names for UI)
-  const DISPLAY_LABELS = {
-    'день гиалуроновой кислоты': 'Гиалурон',
-    'день святого валентина': '14 Фев',
-    'день защитника отечества': '23 Фев',
-    'международный женский день': '8 Марта',
-    'день ухода за телом': 'Уход за телом',
-    'всемирный день здоровья': 'День здоровья',
-    'день защиты детей': 'День детей',
-    'день лака для ногтей': 'Ногти',
-    'всемирный день витилиго': 'Витилиго',
-    'всемирный день поцелуя': 'День поцелуя',
-    'всемирный день здоровья кожи': 'Здоровье кожи',
-    'международный день заботы о себе': 'Забота о себе',
-    'день губной помады': 'Губная помада',
-    'возвращение в школу': 'Back to school',
-    '1 сентября': 'Back to school',
-    'месяц осведомлённости об алопеции': 'Алопеция',
-    'месяц здорового старения': 'Здоровое старение',
-    'международный день красоты': 'День красоты',
-    'всемирный день атопической экземы': 'Атопич. экзема',
-    'день коллагена': 'Коллаген',
-    'день волос': 'День волос',
-    'всемирный день псориаза': 'Псориаз',
-    'международный мужской день': 'Мужской день',
-    'черная пятница': 'Черная пятница',
-    'чёрная пятница': 'Черная пятница',
-    'день матери': 'День матери',
-    'новогодний сезон': 'Новый год',
-  };
-
+  // Display label: use the full name from data — CSS handles truncation via overflow/ellipsis.
+  // Full name always shown in popover. No hardcoded dictionary.
   function povodDisplayLabel(name) {
-    const key = (name || '').toLowerCase().trim();
-    if (DISPLAY_LABELS[key]) return DISPLAY_LABELS[key];
-    const short = name || '';
-    return short.length > 14 ? short.slice(0, 12) + '…' : short;
+    return name || '';
   }
 
   // Collection filter: show item if it matches selected collection OR has no collection (general)
@@ -2304,8 +2319,7 @@ function renderContextRow(container) {
   const seasonAssigned = assignLanes(
     seasonItems,
     c => ctxBarLeft(c.dateStart),
-    c => ctxBarLeft(c.dateStart) + ctxBarWidth(c.dateStart, c.dateEnd),
-    3
+    c => ctxBarLeft(c.dateStart) + ctxBarWidth(c.dateStart, c.dateEnd)
   );
   let maxSeasonLane = 0;
   for (const { item: ctx, lane } of seasonAssigned) {
@@ -2356,7 +2370,6 @@ function renderContextRow(container) {
   const DOT_Y       = 12;  // dot vertical center in collapsed row
   const LANE_H      = 14;  // px per label lane
   const LANE_PAD    = 2;   // top pad
-  const MAX_LANES   = 3;
   const MAX_LABEL_W = 90;
   const LABEL_GAP   = 3;
   const CLUSTER_GAP = SCALE_CONFIG[currentScale].clusterDays * DAY_PX;
@@ -2377,20 +2390,23 @@ function renderContextRow(container) {
     }
   }
 
-  // Lane collision tracker
-  const laneOccupied = Array.from({ length: MAX_LANES }, () => []);
+  // Dynamic lane collision tracker — creates new lanes as needed, no fixed max
+  const laneOccupied = []; // array of arrays; grows dynamically
   function laneFits(lane, left, right) {
+    if (!laneOccupied[lane]) return true;
     for (const s of laneOccupied[lane]) {
       if (right + LABEL_GAP > s.left && left - LABEL_GAP < s.right) return false;
     }
     return true;
   }
-  function laneReserve(lane, left, right) { laneOccupied[lane].push({ left, right }); }
+  function laneReserve(lane, left, right) {
+    if (!laneOccupied[lane]) laneOccupied[lane] = [];
+    laneOccupied[lane].push({ left, right });
+  }
   function bestLane(left, right) {
-    for (let i = 0; i < MAX_LANES; i++) {
-      if (laneFits(i, left, right)) return i;
-    }
-    return -1; // no space
+    let i = 0;
+    while (!laneFits(i, left, right)) i++;
+    return i; // always finds or creates a lane
   }
 
   // Render dots (always, in both states)
@@ -2445,79 +2461,48 @@ function renderContextRow(container) {
   let usedLanes = 0;
 
   function buildExpandedLabels() {
-    // Reset lane tracking
-    laneOccupied.forEach(a => a.length = 0);
+    // Reset lane tracking — clear all lanes
+    laneOccupied.length = 0;
+
+    function placeLabelEl(lbl, lLeft, lRight) {
+      const lane = bestLane(lLeft, lRight);
+      laneReserve(lane, lLeft, lRight);
+      const el = document.createElement('div');
+      el.className = 'ctx-povod-label';
+      el.textContent = lbl;
+      el.title = lbl; // full name always accessible
+      el.dataset.lane = lane;
+      el.style.left = lLeft + 'px';
+      el.style.maxWidth = MAX_LABEL_W + 'px';
+      tcP.appendChild(el);
+      usedLanes = Math.max(usedLanes, lane + 1);
+    }
 
     // Place labels for single-day clusters
     for (const cluster of clusters) {
-      if (cluster.items.length === 1) {
-        const ctx = cluster.items[0];
-        const xPx = ctxBarLeft(ctx.dateStart);
-        const lbl = povodDisplayLabel(ctx.name);
-        const w = Math.min(measureText(lbl) + 6, MAX_LABEL_W);
-        const lLeft = xPx + 4;
-        const lRight = lLeft + w;
-        const lane = bestLane(lLeft, lRight);
-        if (lane >= 0) {
-          laneReserve(lane, lLeft, lRight);
-          const el = document.createElement('div');
-          el.className = 'ctx-povod-label';
-          el.textContent = lbl;
-          el.dataset.lane = lane;
-          el.style.left = lLeft + 'px';
-          el.style.maxWidth = MAX_LABEL_W + 'px';
-          tcP.appendChild(el);
-          usedLanes = Math.max(usedLanes, lane + 1);
-        }
-      } else {
-        // Cluster: show compact name of first + badge label
-        const ctx = cluster.items[0];
-        const xPx = ctxBarLeft(ctx.dateStart);
-        const txt = povodDisplayLabel(ctx.name) + ' +' + (cluster.items.length - 1);
-        const w = Math.min(measureText(txt) + 6, MAX_LABEL_W);
-        const lLeft = xPx + 4;
-        const lane = bestLane(lLeft, lLeft + w);
-        if (lane >= 0) {
-          laneReserve(lane, lLeft, lLeft + w);
-          const el = document.createElement('div');
-          el.className = 'ctx-povod-label';
-          el.textContent = txt;
-          el.dataset.lane = lane;
-          el.style.left = lLeft + 'px';
-          el.style.maxWidth = MAX_LABEL_W + 'px';
-          tcP.appendChild(el);
-          usedLanes = Math.max(usedLanes, lane + 1);
-        }
-      }
+      const ctx = cluster.items[0];
+      const xPx = ctxBarLeft(ctx.dateStart);
+      const lbl = cluster.items.length === 1
+        ? povodDisplayLabel(ctx.name)
+        : povodDisplayLabel(ctx.name) + ' +' + (cluster.items.length - 1);
+      const w = Math.min(measureText(lbl) + 6, MAX_LABEL_W);
+      placeLabelEl(lbl, xPx + 4, xPx + 4 + w);
     }
 
-    // Labels for multi-day
+    // Labels for multi-day items
     for (const ctx of multiItems) {
       const xLeft = ctxBarLeft(ctx.dateStart);
       const lbl = povodDisplayLabel(ctx.name);
       const w = Math.min(measureText(lbl) + 6, MAX_LABEL_W);
-      const lane = bestLane(xLeft, xLeft + w);
-      if (lane >= 0) {
-        laneReserve(lane, xLeft, xLeft + w);
-        const el = document.createElement('div');
-        el.className = 'ctx-povod-label';
-        el.textContent = lbl;
-        el.dataset.lane = lane;
-        el.style.left = xLeft + 'px';
-        el.style.maxWidth = MAX_LABEL_W + 'px';
-        tcP.appendChild(el);
-        usedLanes = Math.max(usedLanes, lane + 1);
-      }
+      placeLabelEl(lbl, xLeft, xLeft + w);
     }
 
     // Position all label elements according to their lane
-    const labelEls = tcP.querySelectorAll('.ctx-povod-label[data-lane]');
-    labelEls.forEach(el => {
-      const lane = +el.dataset.lane;
-      el.style.top = (LANE_PAD + lane * LANE_H) + 'px';
+    tcP.querySelectorAll('.ctx-povod-label[data-lane]').forEach(el => {
+      el.style.top = (LANE_PAD + (+el.dataset.lane) * LANE_H) + 'px';
     });
 
-    // Expand main row height
+    // Expand main row height to fit all dynamic lanes
     const expandedPovodH = LANE_PAD + usedLanes * LANE_H + 4;
     lcP.style.minHeight = Math.max(povodCollapsedH, expandedPovodH) + 'px';
     tcP.style.minHeight = Math.max(povodCollapsedH, expandedPovodH) + 'px';
@@ -2568,44 +2553,101 @@ function renderContextRow(container) {
 
   const { lc: lcE, tc: tcE } = makeSubRow(eventLabelFrag, true);
   addTodayLine(tcE);
-  lcE.style.minHeight = '22px'; tcE.style.minHeight = '22px';
 
-  function buildEventBars() {
-    tcE.querySelectorAll('.ctx-event-bar').forEach(el => el.remove());
-    const eventAssigned = assignLanes(
-      eventAllItems,
-      c => ctxBarLeft(c.dateStart),
-      c => ctxBarLeft(c.dateStart) + ctxBarWidth(c.dateStart, c.dateEnd),
-      3
-    );
-    let maxLane = 0;
-    for (const { item: ctx, lane } of eventAssigned) {
-      maxLane = Math.max(maxLane, lane);
-      const bar = document.createElement('div');
-      bar.className = 'ctx-event-bar';
-      bar.style.left = ctxBarLeft(ctx.dateStart) + 'px';
-      bar.style.width = ctxBarWidth(ctx.dateStart, ctx.dateEnd) + 'px';
-      bar.style.top = (3 + lane * 22) + 'px';
-      bar.textContent = ctxShortLabel(ctx.name, ctx.type);
-      addCtxPopup(bar, ctx);
-      tcE.appendChild(bar);
+  // Events: collapsed = dots only, expanded = dots + lane labels (same pattern as Поводы)
+  const EVENT_DOT_Y   = 12;
+  const EVENT_LANE_H  = 14;
+  const EVENT_LANE_PAD = 2;
+  const EVENT_MAX_W   = 90;
+  const EVENT_GAP     = 3;
+  const eventCollapsedH = EVENT_DOT_Y + 8;
+  lcE.style.minHeight = eventCollapsedH + 'px'; tcE.style.minHeight = eventCollapsedH + 'px';
+
+  // Render dots for all events (always visible in both states)
+  for (const ctx of eventAllItems) {
+    const xPx = ctxBarLeft(ctx.dateStart);
+    const isSingle = Math.round((ctx.dateEnd - ctx.dateStart) / 86400000) <= 1;
+    if (isSingle) {
+      const dot = document.createElement('div');
+      dot.className = 'ctx-event-dot';
+      dot.style.left = xPx + 'px';
+      dot.style.top = EVENT_DOT_Y + 'px';
+      dot.addEventListener('click', e => { e.stopPropagation(); showPovodPopover(dot, ctx); });
+      tcE.appendChild(dot);
+    } else {
+      // Multi-day: bracket line
+      const lineW = Math.max(4, ctxBarWidth(ctx.dateStart, ctx.dateEnd));
+      const line = document.createElement('div');
+      line.className = 'ctx-event-line';
+      line.style.left = xPx + 'px';
+      line.style.width = lineW + 'px';
+      line.style.top = EVENT_DOT_Y + 'px';
+      line.addEventListener('click', e => { e.stopPropagation(); showPovodPopover(line, ctx); });
+      tcE.appendChild(line);
     }
-    const h = Math.max(22, (maxLane + 1) * 22 + 6);
+  }
+
+  let eventUsedLanes = 0;
+  const eventLaneOcc = [];
+
+  function eventLaneFits(lane, left, right) {
+    if (!eventLaneOcc[lane]) return true;
+    for (const s of eventLaneOcc[lane]) {
+      if (right + EVENT_GAP > s.left && left - EVENT_GAP < s.right) return false;
+    }
+    return true;
+  }
+  function eventLaneReserve(lane, left, right) {
+    if (!eventLaneOcc[lane]) eventLaneOcc[lane] = [];
+    eventLaneOcc[lane].push({ left, right });
+  }
+  function eventBestLane(left, right) {
+    let i = 0;
+    while (!eventLaneFits(i, left, right)) i++;
+    return i;
+  }
+
+  function buildEventLabels() {
+    eventLaneOcc.length = 0;
+    eventUsedLanes = 0;
+    for (const ctx of eventAllItems) {
+      const xLeft = ctxBarLeft(ctx.dateStart);
+      const lbl = ctx.name || '';
+      const w = Math.min(_measCtx.measureText(lbl).width + 6, EVENT_MAX_W);
+      const lane = eventBestLane(xLeft, xLeft + w);
+      eventLaneReserve(lane, xLeft, xLeft + w);
+      const el = document.createElement('div');
+      el.className = 'ctx-event-label';
+      el.textContent = lbl;
+      el.title = lbl;
+      el.dataset.elane = lane;
+      el.style.left = xLeft + 'px';
+      el.style.maxWidth = EVENT_MAX_W + 'px';
+      el.style.top = (EVENT_LANE_PAD + lane * EVENT_LANE_H) + 'px';
+      tcE.appendChild(el);
+      eventUsedLanes = Math.max(eventUsedLanes, lane + 1);
+    }
+    const h = Math.max(eventCollapsedH, EVENT_LANE_PAD + eventUsedLanes * EVENT_LANE_H + 4);
     lcE.style.minHeight = h + 'px'; tcE.style.minHeight = h + 'px';
   }
 
-  if (eventExpanded && allExpanded) buildEventBars();
+  function removeEventLabels() {
+    tcE.querySelectorAll('.ctx-event-label[data-elane]').forEach(el => el.remove());
+    eventUsedLanes = 0;
+    lcE.style.minHeight = eventCollapsedH + 'px'; tcE.style.minHeight = eventCollapsedH + 'px';
+  }
+
+  if (eventExpanded && allExpanded) buildEventLabels();
 
   lcE.addEventListener('click', (e) => {
     e.stopPropagation();
     const nowExpanded = sessionStorage.getItem('ctx_event_expanded') === 'true';
     if (nowExpanded) {
-      tcE.querySelectorAll('.ctx-event-bar').forEach(el => el.remove());
-      lcE.style.minHeight = '22px'; tcE.style.minHeight = '22px';
+      removeEventLabels();
       eventArrow.classList.add('collapsed');
       sessionStorage.setItem('ctx_event_expanded', 'false');
     } else {
-      buildEventBars();
+      buildEventLabels();
       eventArrow.classList.remove('collapsed');
       sessionStorage.setItem('ctx_event_expanded', 'true');
     }
@@ -2637,8 +2679,7 @@ function renderContextRow(container) {
     const launchAssigned = assignLanes(
       launchAllItems,
       c => ctxBarLeft(c.dateStart),
-      c => ctxBarLeft(c.dateStart) + ctxBarWidth(c.dateStart, c.dateEnd),
-      3
+      c => ctxBarLeft(c.dateStart) + ctxBarWidth(c.dateStart, c.dateEnd)
     );
     let maxLane = 0;
     for (const { item: ctx, lane } of launchAssigned) {
