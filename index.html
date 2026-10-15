@@ -1237,50 +1237,6 @@ body {
   box-shadow: 2px 0 4px rgba(0,0,0,.05);
 }
 
-/* ── SCALE SWITCHER ── */
-.scale-switcher {
-  display: inline-flex;
-  align-items: center;
-  gap: 0;
-  background: var(--surface2);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  overflow: hidden;
-  flex-shrink: 0;
-}
-.scale-btn {
-  height: 30px;
-  padding: 0 10px;
-  border: none;
-  border-right: 1px solid var(--border);
-  background: transparent;
-  color: var(--text-secondary);
-  font-family: inherit;
-  font-size: 12px;
-  font-weight: 500;
-  cursor: pointer;
-  white-space: nowrap;
-  transition: all .15s;
-}
-.scale-btn:last-child { border-right: none; }
-.scale-btn:hover { background: var(--border); color: var(--text-primary); }
-.scale-btn.active {
-  background: var(--accent);
-  color: #fff;
-}
-.scale-label {
-  font-size: 11px;
-  color: var(--text-muted);
-  padding: 0 6px 0 2px;
-  white-space: nowrap;
-  flex-shrink: 0;
-}
-#filterMonth {
-  display: none;
-}
-#filterMonth.visible {
-  display: inline-block;
-}
 
 /* ── EXPORT MODAL ── */
 .modal-backdrop {
@@ -1379,36 +1335,8 @@ body {
   <div class="topbar-logo">Librederm <span>Planner</span></div>
   <div class="topbar-sep"></div>
   <div class="filters" id="filtersBar">
-    <span class="scale-label">Масштаб:</span>
-    <div class="scale-switcher">
-      <button class="scale-btn active" id="scaleYear" onclick="setScale('year')">Год</button>
-      <button class="scale-btn" id="scaleQuarter" onclick="setScale('quarter')">Квартал</button>
-      <button class="scale-btn" id="scaleMonth" onclick="setScale('month')">Месяц</button>
-    </div>
-    <div class="topbar-sep"></div>
     <select class="filter-select" id="filterYear" onchange="applyFilters()">
       <option value="">Все годы</option>
-    </select>
-    <select class="filter-select" id="filterQuarter" onchange="applyFilters()">
-      <option value="">Все кварталы</option>
-      <option value="1">Q1 (янв–март)</option>
-      <option value="2">Q2 (апр–июнь)</option>
-      <option value="3">Q3 (июль–сент)</option>
-      <option value="4">Q4 (окт–дек)</option>
-    </select>
-    <select class="filter-select" id="filterMonth" onchange="applyFilters()">
-      <option value="0">Январь</option>
-      <option value="1">Февраль</option>
-      <option value="2">Март</option>
-      <option value="3">Апрель</option>
-      <option value="4">Май</option>
-      <option value="5">Июнь</option>
-      <option value="6">Июль</option>
-      <option value="7">Август</option>
-      <option value="8">Сентябрь</option>
-      <option value="9">Октябрь</option>
-      <option value="10">Ноябрь</option>
-      <option value="11">Декабрь</option>
     </select>
     <select class="filter-select" id="filterCollection" onchange="applyFilters()">
       <option value="">Все коллекции</option>
@@ -1464,26 +1392,10 @@ body {
       <div class="modal-row">
         <div class="modal-seg">
           <button class="seg-btn active" id="epYear"    onclick="setExportPeriod('year')">Год</button>
-          <button class="seg-btn"        id="epQuarter" onclick="setExportPeriod('quarter')">Квартал</button>
-          <button class="seg-btn"        id="epMonth"   onclick="setExportPeriod('month')">Месяц</button>
         </div>
       </div>
       <div class="modal-row" id="exportDateRow">
         <select class="modal-select" id="expYear" onchange="updateExportPreview()">
-        </select>
-        <select class="modal-select" id="expQuarter" style="display:none" onchange="updateExportPreview()">
-          <option value="1">I квартал</option>
-          <option value="2">II квартал</option>
-          <option value="3">III квартал</option>
-          <option value="4">IV квартал</option>
-        </select>
-        <select class="modal-select" id="expMonth" style="display:none" onchange="updateExportPreview()">
-          <option value="0">Январь</option><option value="1">Февраль</option>
-          <option value="2">Март</option><option value="3">Апрель</option>
-          <option value="4">Май</option><option value="5">Июнь</option>
-          <option value="6">Июль</option><option value="7">Август</option>
-          <option value="8">Сентябрь</option><option value="9">Октябрь</option>
-          <option value="10">Ноябрь</option><option value="11">Декабрь</option>
         </select>
       </div>
     </div>
@@ -1610,15 +1522,8 @@ const MCP_SERVER = 'Google Sheets';
 const TODAY = new Date();
 TODAY.setHours(0,0,0,0);
 
-// ── SCALE CONFIG ────────────────────────────────────────────────────
-// DAY_PX is now dynamic based on scale
-const SCALE_CONFIG = {
-  year:    { dayPx: 4,  clusterDays: 14, minLabelLen: 8,  showLabelProb: 'sparse' },
-  quarter: { dayPx: 8,  clusterDays: 7,  minLabelLen: 6,  showLabelProb: 'normal' },
-  month:   { dayPx: 20, clusterDays: 2,  minLabelLen: 0,  showLabelProb: 'all'    },
-};
-let currentScale = 'year';
-let DAY_PX = SCALE_CONFIG.year.dayPx;
+// ── SCALE ────────────────────────────────────────────────────────────
+const DAY_PX = 4;
 
 const STATUS_LABELS = {
   'план': 'План',
@@ -1815,54 +1720,35 @@ function ctxTypeMeta(type='') {
 
 // ── COMPUTE VIEW RANGE ─────────────────────────────────────────────
 function computeViewRange() {
-  const year    = document.getElementById('filterYear').value;
-  const quarter = document.getElementById('filterQuarter').value;
-  const month   = document.getElementById('filterMonth').value;
+  const year = document.getElementById('filterYear').value;
 
-  // Update DAY_PX from current scale
-  DAY_PX = SCALE_CONFIG[currentScale].dayPx;
-
-  if (currentScale === 'month') {
-    // Use selected year or current year
+  // Year scale — use data range or selected year
+  const dates = [];
+  for (const f of visibleFlights) {
+    if (f.dateStart) dates.push(f.dateStart);
+    if (f.dateEnd) dates.push(f.dateEnd);
+  }
+  for (const c of allContext) {
+    if (c.dateStart) dates.push(c.dateStart);
+    if (c.dateEnd) dates.push(c.dateEnd);
+  }
+  if (!dates.length) {
     const y = year ? +year : TODAY.getFullYear();
-    const m = (month !== '' && month !== null) ? +month : TODAY.getMonth();
-    viewStart = new Date(y, m, 1);
-    viewEnd   = new Date(y, m + 1, 0);
-  } else if (currentScale === 'quarter') {
-    const y = year ? +year : TODAY.getFullYear();
-    const q = quarter ? +quarter : Math.floor(TODAY.getMonth() / 3) + 1;
-    const qStart = (q - 1) * 3;
-    viewStart = new Date(y, qStart, 1);
-    viewEnd   = new Date(y, qStart + 3, 0);
+    viewStart = new Date(y, 0, 1);
+    viewEnd   = new Date(y, 11, 31);
   } else {
-    // Year scale — use data range or selected year
-    const dates = [];
-    for (const f of visibleFlights) {
-      if (f.dateStart) dates.push(f.dateStart);
-      if (f.dateEnd) dates.push(f.dateEnd);
-    }
-    for (const c of allContext) {
-      if (c.dateStart) dates.push(c.dateStart);
-      if (c.dateEnd) dates.push(c.dateEnd);
-    }
-    if (!dates.length) {
-      const y = year ? +year : TODAY.getFullYear();
-      viewStart = new Date(y, 0, 1);
-      viewEnd   = new Date(y, 11, 31);
+    // When year filter is set, show that full year
+    if (year) {
+      viewStart = new Date(+year, 0, 1);
+      viewEnd   = new Date(+year, 11, 31);
     } else {
-      // When year filter is set, show that full year
-      if (year) {
-        viewStart = new Date(+year, 0, 1);
-        viewEnd   = new Date(+year, 11, 31);
-      } else {
-        viewStart = new Date(Math.min(...dates));
-        viewEnd   = new Date(Math.max(...dates));
-        viewStart = new Date(viewStart.getTime() - 14*86400000);
-        viewEnd   = new Date(viewEnd.getTime() + 14*86400000);
-        // snap to month boundaries
-        viewStart = new Date(viewStart.getFullYear(), viewStart.getMonth(), 1);
-        viewEnd   = new Date(viewEnd.getFullYear(), viewEnd.getMonth()+1, 0);
-      }
+      viewStart = new Date(Math.min(...dates));
+      viewEnd   = new Date(Math.max(...dates));
+      viewStart = new Date(viewStart.getTime() - 14*86400000);
+      viewEnd   = new Date(viewEnd.getTime() + 14*86400000);
+      // snap to month boundaries
+      viewStart = new Date(viewStart.getFullYear(), viewStart.getMonth(), 1);
+      viewEnd   = new Date(viewEnd.getFullYear(), viewEnd.getMonth()+1, 0);
     }
   }
 
@@ -1881,24 +1767,7 @@ function barWidth(s, e) {
 
 // ── FILTERS ────────────────────────────────────────────────────────
 function applyFilters() {
-  // Update filter visibility based on current scale
-  const fQ = document.getElementById('filterQuarter');
-  const fM = document.getElementById('filterMonth');
-  if (currentScale === 'quarter') {
-    fQ.style.display = 'inline-block';
-    fM.style.display = 'none';
-  } else if (currentScale === 'month') {
-    fQ.style.display = 'none';
-    fM.style.display = 'inline-block';
-  } else {
-    // year scale — hide both
-    fQ.style.display = 'none';
-    fM.style.display = 'none';
-  }
-
   const year   = document.getElementById('filterYear').value;
-  // Quarter filter only applies in quarter scale to avoid restricting year view
-  const quarter = currentScale === 'quarter' ? document.getElementById('filterQuarter').value : '';
   const col    = document.getElementById('filterCollection').value;
   const status = document.getElementById('filterStatus').value;
   const dir    = document.getElementById('filterDirection').value;
@@ -1908,18 +1777,10 @@ function applyFilters() {
     if (f.status === 'отменено' && status !== 'отменено') return false;
     if (status && f.status !== status) return false;
     if (col && f.collection !== col) return false;
-    if (year || quarter) {
+    if (year) {
       const fy = f.dateStart?.getFullYear();
       const ey = f.dateEnd?.getFullYear();
-      if (year && fy != year && ey != year) return false;
-      if (quarter) {
-        const q = +quarter;
-        const qMonths = [[0,1,2],[3,4,5],[6,7,8],[9,10,11]][q-1];
-        const sm = f.dateStart?.getMonth();
-        const em = f.dateEnd?.getMonth();
-        const inQ = qMonths.some(m => (sm<=m && m<=em));
-        if (!inQ) return false;
-      }
+      if (fy != year && ey != year) return false;
     }
     if (dir) {
       const acts = allActivities.filter(a => norm(a.flightName) === norm(f.name));
@@ -1930,59 +1791,6 @@ function applyFilters() {
 
   computeViewRange();
   renderGantt();
-}
-
-// ── SET SCALE ──────────────────────────────────────────────────────
-function setScale(scale) {
-  if (scale === currentScale) return;
-
-  // Save scroll position (center date) before changing scale
-  const ganttBody = document.getElementById('ganttScroll');
-  let savedCenterDate = null;
-  if (ganttBody && viewStart && DAY_PX > 0) {
-    const scrollLeft = ganttBody.scrollLeft;
-    const viewportW  = ganttBody.clientWidth;
-    const centerPx   = scrollLeft + viewportW / 2;
-    const centerDay  = Math.round(centerPx / DAY_PX);
-    savedCenterDate  = new Date(viewStart.getTime() + centerDay * 86400000);
-  }
-
-  currentScale = scale;
-
-  // Update active button styling
-  ['year', 'quarter', 'month'].forEach(s => {
-    const btn = document.getElementById('scale' + s.charAt(0).toUpperCase() + s.slice(1));
-    if (btn) btn.classList.toggle('active', s === scale);
-  });
-
-  // For month scale: pre-select month from savedCenterDate if not already set
-  if (scale === 'month' && savedCenterDate) {
-    const fM = document.getElementById('filterMonth');
-    // only auto-select if no explicit user choice yet (default 0 = January means unset state)
-    // always set to the month the user was looking at
-    fM.value = savedCenterDate.getMonth();
-    // Also update year filter to match
-    const fY = document.getElementById('filterYear');
-    if (!fY.value) {
-      // try to find and select the year
-      const yr = savedCenterDate.getFullYear();
-      const opt = [...fY.options].find(o => +o.value === yr);
-      if (opt) fY.value = yr;
-    }
-  }
-
-  // Apply filters (this also updates visibility and re-renders)
-  applyFilters();
-
-  // Restore scroll to same center date in new scale
-  if (savedCenterDate && ganttBody && viewStart) {
-    requestAnimationFrame(() => {
-      const newDAY_PX = SCALE_CONFIG[currentScale].dayPx;
-      const dayOffset = Math.round((savedCenterDate - viewStart) / 86400000);
-      const targetPx  = dayOffset * newDAY_PX - ganttBody.clientWidth / 2;
-      ganttBody.scrollLeft = Math.max(0, targetPx);
-    });
-  }
 }
 
 // ── POPULATE FILTERS ───────────────────────────────────────────────
@@ -2372,7 +2180,7 @@ function renderContextRow(container) {
   const LANE_PAD    = 2;   // top pad
   const MAX_LABEL_W = 90;
   const LABEL_GAP   = 3;
-  const CLUSTER_GAP = SCALE_CONFIG[currentScale].clusterDays * DAY_PX;
+  const CLUSTER_GAP = 14 * DAY_PX;
 
   const singleItems = povodAllItems.filter(c => Math.round((c.dateEnd - c.dateStart) / 86400000) <= 1);
   const multiItems  = povodAllItems.filter(c => Math.round((c.dateEnd - c.dateStart) / 86400000) > 1);
@@ -3273,7 +3081,7 @@ async function initData() {
 // EXPORT MODAL
 // ══════════════════════════════════════════════════════════════════
 
-let exportPeriodType = 'year';   // 'year' | 'quarter' | 'month'
+let exportPeriodType = 'year';
 let exportPresentationType = 'overview'; // 'overview' | 'full'
 
 // ── Collect all years present in data ─────────────────────────────
@@ -3286,36 +3094,6 @@ function getDataYears() {
   return [...ySet].sort();
 }
 
-// Quarter and month availability per year
-function getAvailableQuarters(year) {
-  const avail = new Set();
-  for (const f of allFlights) {
-    const fy = f.dateStart?.getFullYear();
-    const ey = f.dateEnd?.getFullYear();
-    if (fy !== year && ey !== year) continue;
-    for (let q = 1; q <= 4; q++) {
-      const qStart = new Date(year, (q-1)*3, 1);
-      const qEnd   = new Date(year, q*3, 0);
-      if (f.dateStart <= qEnd && f.dateEnd >= qStart) avail.add(q);
-    }
-  }
-  return avail;
-}
-function getAvailableMonths(year) {
-  const avail = new Set();
-  for (const f of allFlights) {
-    if (!f.dateStart || !f.dateEnd) continue;
-    const mStart = new Date(year, 0, 1);
-    const mEnd   = new Date(year, 11, 31);
-    if (f.dateStart > mEnd || f.dateEnd < mStart) continue;
-    for (let m = 0; m < 12; m++) {
-      const ms = new Date(year, m, 1);
-      const me = new Date(year, m+1, 0);
-      if (f.dateStart <= me && f.dateEnd >= ms) avail.add(m);
-    }
-  }
-  return avail;
-}
 
 // ── Open / close ───────────────────────────────────────────────────
 function openExportModal() {
@@ -3340,16 +3118,12 @@ function openExportModal() {
   // Default period = year, type = overview, checks = on
   exportPeriodType = 'year';
   exportPresentationType = 'overview';
-  ['epYear','epQuarter','epMonth'].forEach(id => document.getElementById(id).classList.remove('active'));
   document.getElementById('epYear').classList.add('active');
   ['etOverview','etFull'].forEach(id => document.getElementById(id).classList.remove('active'));
   document.getElementById('etOverview').classList.add('active');
   document.getElementById('expContext').checked = true;
   document.getElementById('expFilters').checked = true;
-  document.getElementById('expQuarter').style.display = 'none';
-  document.getElementById('expMonth').style.display = 'none';
 
-  updateExportQuarterMonthOptions();
   updateExportPreview();
   document.getElementById('exportBackdrop').classList.add('open');
 }
@@ -3361,13 +3135,7 @@ function closeExportModal(e) {
 // ── Period switcher ────────────────────────────────────────────────
 function setExportPeriod(type) {
   exportPeriodType = type;
-  ['epYear','epQuarter','epMonth'].forEach(id => document.getElementById(id).classList.remove('active'));
-  document.getElementById('ep' + type.charAt(0).toUpperCase() + type.slice(1)).classList.add('active');
-
-  document.getElementById('expQuarter').style.display = type === 'quarter' ? 'block' : 'none';
-  document.getElementById('expMonth').style.display   = type === 'month'   ? 'block' : 'none';
-
-  updateExportQuarterMonthOptions();
+  document.getElementById('epYear').classList.toggle('active', type === 'year');
   updateExportPreview();
 }
 function setExportType(type) {
@@ -3377,54 +3145,12 @@ function setExportType(type) {
   updateExportPreview();
 }
 
-// ── Update quarter/month options based on selected year ────────────
-function updateExportQuarterMonthOptions() {
-  const year = +document.getElementById('expYear').value;
-  if (!year) return;
-
-  if (exportPeriodType === 'quarter') {
-    const avail = getAvailableQuarters(year);
-    const sel = document.getElementById('expQuarter');
-    [...sel.options].forEach(o => {
-      o.disabled = !avail.has(+o.value);
-    });
-    // Select first available if current is disabled
-    if (sel.options[sel.selectedIndex]?.disabled) {
-      const first = [...sel.options].find(o => !o.disabled);
-      if (first) sel.value = first.value;
-    }
-  }
-
-  if (exportPeriodType === 'month') {
-    const avail = getAvailableMonths(year);
-    const sel = document.getElementById('expMonth');
-    [...sel.options].forEach(o => {
-      o.disabled = !avail.has(+o.value);
-    });
-    if (sel.options[sel.selectedIndex]?.disabled) {
-      const first = [...sel.options].find(o => !o.disabled);
-      if (first) sel.value = first.value;
-    }
-  }
-}
 
 // ── Preview line ───────────────────────────────────────────────────
 function calcExportRange() {
   const year = +document.getElementById('expYear').value;
   if (!year) return null;
-
-  if (exportPeriodType === 'year') {
-    return { start: new Date(year,0,1), end: new Date(year,11,31) };
-  }
-  if (exportPeriodType === 'quarter') {
-    const q = +document.getElementById('expQuarter').value;
-    return { start: new Date(year,(q-1)*3,1), end: new Date(year,q*3,0) };
-  }
-  if (exportPeriodType === 'month') {
-    const m = +document.getElementById('expMonth').value;
-    return { start: new Date(year,m,1), end: new Date(year,m+1,0) };
-  }
-  return null;
+  return { start: new Date(year,0,1), end: new Date(year,11,31) };
 }
 
 function intersects(dateStart, dateEnd, rangeStart, rangeEnd) {
@@ -3432,9 +3158,6 @@ function intersects(dateStart, dateEnd, rangeStart, rangeEnd) {
 }
 
 function updateExportPreview() {
-  // Also update quarter/month availability on year change
-  updateExportQuarterMonthOptions();
-
   const range = calcExportRange();
   const preview = document.getElementById('exportPreview');
   if (!range) { preview.innerHTML = 'Нет данных для выбранного периода'; return; }
@@ -3464,37 +3187,17 @@ function updateExportPreview() {
     : 0;
 
   // Period label
-  const MONTHS_RU = ['Январь','Февраль','Март','Апрель','Май','Июнь','Июль','Август','Сентябрь','Октябрь','Ноябрь','Декабрь'];
-  const MONTHS_GEN = ['января','февраля','марта','апреля','мая','июня','июля','августа','сентября','октября','ноября','декабря'];
-  const Q_ROM = ['','I','II','III','IV'];
   const year = +document.getElementById('expYear').value;
-  let periodLabel = '';
-  let titleLabel  = '';
-  let fileLabel   = '';
-  if (exportPeriodType === 'year') {
-    periodLabel = String(year);
-    titleLabel  = `Медиаплан ${year}`;
-    fileLabel   = `LIBREDERM_Медиаплан_${year}`;
-  } else if (exportPeriodType === 'quarter') {
-    const q = +document.getElementById('expQuarter').value;
-    periodLabel = `${Q_ROM[q]} кв. ${year}`;
-    titleLabel  = `Медиаплан · ${Q_ROM[q]} квартал ${year}`;
-    fileLabel   = `LIBREDERM_Медиаплан_${year}_Q${q}`;
-  } else {
-    const m = +document.getElementById('expMonth').value;
-    periodLabel = `${MONTHS_RU[m]} ${year}`;
-    titleLabel  = `Медиаплан · ${MONTHS_RU[m]} ${year}`;
-    fileLabel   = `LIBREDERM_Медиаплан_${year}_${MONTHS_RU[m]}`;
-  }
+  let periodLabel = String(year);
+  let titleLabel  = `Медиаплан ${year}`;
+  let fileLabel   = `LIBREDERM_Медиаплан_${year}`;
 
   // Collection filter active?
   const colFilter = document.getElementById('filterCollection').value;
   if (useFilters && colFilter) {
     const colName = [...document.getElementById('filterCollection').options]
       .find(o => o.value === colFilter)?.textContent || colFilter.toUpperCase();
-    fileLabel = `LIBREDERM_${colName.toUpperCase()}_${year}` + (exportPeriodType !== 'year'
-      ? (exportPeriodType === 'quarter' ? `_Q${document.getElementById('expQuarter').value}` : `_${MONTHS_RU[+document.getElementById('expMonth').value]}`)
-      : '');
+    fileLabel = `LIBREDERM_${colName.toUpperCase()}_${year}`;
   }
 
   const typeLabel = exportPresentationType === 'full' ? 'Полная' : 'Обзорная';
@@ -3808,9 +3511,7 @@ function _buildPptx(data) {
     const year = range.start.getFullYear();
     const rStart = new Date(year, 0, 1);
     const rEnd   = new Date(year, 11, 31);
-    addSlideHeader(s, 'Рекламный календарь ' + year,
-      exportPeriodType === 'year' ? null : `${range.start.toLocaleDateString('ru-RU',{day:'2-digit',month:'short'})} – ${range.end.toLocaleDateString('ru-RU',{day:'2-digit',month:'short'})}`
-    );
+    addSlideHeader(s, 'Рекламный календарь ' + year, null);
 
     // Group flights by collection for display (one row per collection)
     const collSet = [...new Set(flights.map(f=>f.collection).filter(Boolean))];
@@ -3818,8 +3519,6 @@ function _buildPptx(data) {
       return flights.filter(f=>f.collection===cs);
     });
 
-    // If quarter/month — show only in range, grouped
-    const displayRange = { start: range.start, end: range.end };
     buildTimelineSlide(s, flights, range.start, range.end, 'timeline', useContext);
   }
 
